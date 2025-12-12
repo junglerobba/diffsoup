@@ -51,8 +51,11 @@ enum Screen {
 
 #[derive(Debug, Default)]
 pub struct AppState {
-    base_branch: Option<RefNameBuf>,
-    comparison_branch: Option<RefNameBuf>,
+    commit_history: Vec<RefNameBuf>,
+    base_branch: usize,
+    comparison_branch: usize,
+    displayed_base: Option<usize>,
+    displayed_comparison: Option<usize>,
     selected_commit_index: usize,
     list_state: ListState,
     show_unchanged: bool,
@@ -72,8 +75,11 @@ impl App {
             workspace,
             repo,
             state: AppState {
-                base_branch: None,
-                comparison_branch: None,
+                commit_history: Vec::new(),
+                base_branch: 0,
+                comparison_branch: 1,
+                displayed_base: None,
+                displayed_comparison: None,
                 selected_commit_index: 0,
                 list_state: ListState::default(),
                 show_unchanged: false,
@@ -103,14 +109,8 @@ impl App {
         result
     }
 
-    pub fn set_base_branch(&mut self, branch: &str) {
-        self.state.base_branch = Some(RefNameBuf::from(branch));
-        self.get_overview();
-    }
-
-    pub fn set_comparison_branch(&mut self, branch: &str) {
-        self.state.comparison_branch = Some(RefNameBuf::from(branch));
-        self.get_overview();
+    pub fn set_commit_history(&mut self, history: Vec<RefNameBuf>) {
+        self.state.commit_history = history;
     }
 
     pub fn get_overview(&mut self) {
@@ -119,8 +119,8 @@ impl App {
             return;
         }
         let (Some(from), Some(to)) = (
-            self.state.base_branch.as_ref(),
-            self.state.comparison_branch.as_ref(),
+            self.state.commit_history.get(self.state.base_branch),
+            self.state.commit_history.get(self.state.comparison_branch),
         ) else {
             return;
         };
@@ -132,7 +132,11 @@ impl App {
             &self.workspace,
             self.repo.as_ref(),
         ) {
-            Ok(diff) => Screen::CommitList(diff),
+            Ok(diff) => {
+                self.state.displayed_base = Some(self.state.base_branch);
+                self.state.displayed_comparison = Some(self.state.comparison_branch);
+                Screen::CommitList(diff)
+            }
             _ => Screen::Empty,
         };
     }
@@ -141,6 +145,7 @@ impl App {
         &mut self,
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     ) -> io::Result<()> {
+        self.get_overview();
         let mut last_size = terminal.size()?;
         let mut needs_redraw = true;
         while !self.should_quit {
@@ -156,6 +161,15 @@ impl App {
                     }
                     _ => {}
                 }
+            }
+
+            if matches!(self.current_screen, Screen::CommitList(_))
+                && (self.state.displayed_base != Some(self.state.base_branch)
+                    || self.state.displayed_comparison != Some(self.state.comparison_branch))
+            {
+                self.state.cache = None;
+                self.get_overview();
+                needs_redraw = true;
             }
 
             if let (Screen::InterdiffView(view), Some(branch_diff)) =
@@ -365,12 +379,14 @@ impl App {
                 format!(
                     "diffsoup - {} vs {}",
                     self.state
-                        .base_branch
+                        .commit_history
+                        .get(self.state.base_branch)
                         .as_ref()
                         .map(|b| b.as_str())
                         .unwrap_or("?"),
                     self.state
-                        .comparison_branch
+                        .commit_history
+                        .get(self.state.comparison_branch)
                         .as_ref()
                         .map(|b| b.as_str())
                         .unwrap_or("?")
@@ -441,13 +457,15 @@ impl App {
         let visible_commits = self.get_visible_commits(diff);
         let from_branch = self
             .state
-            .base_branch
+            .commit_history
+            .get(self.state.base_branch)
             .as_ref()
             .map(|b| b.as_str())
             .unwrap_or("<not set>");
         let to_branch = self
             .state
-            .comparison_branch
+            .commit_history
+            .get(self.state.comparison_branch)
             .as_ref()
             .map(|b| b.as_str())
             .unwrap_or("<not set>");
