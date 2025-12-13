@@ -13,6 +13,7 @@ gix = "0.75.0"
 jj-cli = "0.36.0"
 jj-lib = "0.36.0"
 ratatui = "0.29.0"
+url = "2.5.7"
 
 [lib]
 name = "diffsoup"
