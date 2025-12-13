@@ -31,7 +31,7 @@ pub struct App {
     should_quit: bool,
     current_screen: Screen,
     workspace: Workspace,
-    repo: Arc<ReadonlyRepo>,
+    pub repo: Arc<ReadonlyRepo>,
     state: AppState,
 }
 

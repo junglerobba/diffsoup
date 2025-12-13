@@ -3,7 +3,7 @@ mod tui;
 use clap::Parser;
 use diffsoup::{
     pr::{PrFetcher, get_pr_fetcher},
-    repo::open,
+    repo::{ensure_commits_exist, open},
 };
 use jj_lib::ref_name::RefNameBuf;
 use std::{
@@ -45,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             process::exit(1);
         }
         app.set_comparison_index(commits.len() - 1);
+        app.repo = ensure_commits_exist(commits.iter(), app.repo.clone())?;
         app.set_commit_history(commits);
     } else if let (Some(from), Some(to)) = (&args.from, &args.to) {
         let history = vec![RefNameBuf::from(from), RefNameBuf::from(to)];
