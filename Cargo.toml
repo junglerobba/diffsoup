@@ -4,6 +4,20 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = "0.4.42"
 clap = { version = "4.5.53", features = ["derive"] }
+crossterm = "0.28.1"
+error-stack = "0.6.0"
+futures = "0.3.31"
+gix = "0.75.0"
+jj-cli = "0.36.0"
 jj-lib = "0.36.0"
 ratatui = "0.29.0"
+
+[lib]
+name = "diffsoup"
+path = "src/lib.rs"
+
+[[bin]]
+name = "diffsoup"
+path = "src/main.rs"
