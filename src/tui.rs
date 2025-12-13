@@ -44,7 +44,7 @@ pub struct DiffView {
 
 #[derive(Debug)]
 enum Screen {
-    Empty,
+    Empty(Option<String>),
     CommitList(BranchDiff),
     InterdiffView(DiffView),
 }
@@ -71,7 +71,7 @@ impl App {
             .change_context(CustomError::RepoError)?;
         Ok(Self {
             should_quit: false,
-            current_screen: Screen::Empty,
+            current_screen: Screen::Empty(None),
             workspace,
             repo,
             state: AppState {
@@ -141,7 +141,7 @@ impl App {
                 self.state.displayed_comparison = Some(self.state.comparison_branch);
                 Screen::CommitList(diff)
             }
-            _ => Screen::Empty,
+            Err(e) => Screen::Empty(Some(format!("{:#?}", e))),
         };
     }
 
@@ -247,7 +247,7 @@ impl App {
         match &self.current_screen {
             Screen::CommitList(_) => self.handle_list_keys(key, terminal),
             Screen::InterdiffView(_) => self.handle_interdiff_keys(key, terminal),
-            Screen::Empty => {}
+            Screen::Empty(_) => {}
         }
         // Global bindings, not specific to any screen
         match (key.code, key.modifiers) {
@@ -284,7 +284,7 @@ impl App {
             }
             (KeyCode::Enter | KeyCode::Char('l'), _) => {
                 if let Screen::CommitList(branch_diff) =
-                    std::mem::replace(&mut self.current_screen, Screen::Empty)
+                    std::mem::replace(&mut self.current_screen, Screen::Empty(None))
                 {
                     let Ok(size) = terminal.size() else {
                         return;
@@ -412,7 +412,7 @@ impl App {
             .split(f.area());
 
         let header_text = match &self.current_screen {
-            Screen::Empty => "diffsoup - Branch Comparison Tool".to_string(),
+            Screen::Empty(_) => "diffsoup - Branch Comparison Tool".to_string(),
             Screen::CommitList(_) => {
                 let total = self.state.commit_history.len();
                 let base_name = self
@@ -451,7 +451,8 @@ impl App {
         f.render_widget(header, chunks[0]);
 
         match &self.current_screen {
-            Screen::Empty => {}
+            Screen::Empty(Some(msg)) => self.render_message(f, chunks[1], msg),
+            Screen::Empty(None) => {}
             Screen::CommitList(branch_diff) => {
                 let visible_commits = self.get_visible_commits(branch_diff);
                 let title = self.get_commit_list_title(branch_diff);
@@ -480,7 +481,7 @@ impl App {
         }
 
         let footer_text = match &self.current_screen {
-            Screen::Empty => "".to_string(),
+            Screen::Empty(_) => "".to_string(),
             Screen::CommitList(_) => {
                 let hide_text = if self.state.show_unchanged {
                     "hide"
@@ -596,6 +597,15 @@ impl App {
         ]);
 
         ListItem::new(line).style(style)
+    }
+
+    fn render_message(&self, f: &mut ratatui::Frame, area: ratatui::layout::Rect, msg: &str) {
+        let lines: Vec<Line> = msg.lines().map(Line::from).collect();
+        let block = Block::default().borders(Borders::ALL);
+
+        let content = Paragraph::new(lines).block(block);
+
+        f.render_widget(content, area);
     }
 
     fn render_interdiff(
