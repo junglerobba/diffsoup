@@ -376,20 +376,29 @@ impl App {
         let header_text = match &self.current_screen {
             Screen::Empty => "diffsoup - Branch Comparison Tool".to_string(),
             Screen::CommitList(_) => {
+                let total = self.state.commit_history.len();
+                let base_name = self
+                    .state
+                    .commit_history
+                    .get(self.state.base_branch)
+                    .as_ref()
+                    .map(|b| b.as_str())
+                    .unwrap_or("?");
+                let comp_name = self
+                    .state
+                    .commit_history
+                    .get(self.state.comparison_branch)
+                    .as_ref()
+                    .map(|b| b.as_str())
+                    .unwrap_or("?");
                 format!(
-                    "diffsoup - {} vs {}",
-                    self.state
-                        .commit_history
-                        .get(self.state.base_branch)
-                        .as_ref()
-                        .map(|b| b.as_str())
-                        .unwrap_or("?"),
-                    self.state
-                        .commit_history
-                        .get(self.state.comparison_branch)
-                        .as_ref()
-                        .map(|b| b.as_str())
-                        .unwrap_or("?")
+                    "diffsoup - Patchset [{}/{}] {} → [{}/{}] {}",
+                    self.state.base_branch + 1,
+                    total,
+                    base_name,
+                    self.state.comparison_branch + 1,
+                    total,
+                    comp_name
                 )
             }
             Screen::InterdiffView(_) => "diffsoup - Interdiff View".to_string(),
