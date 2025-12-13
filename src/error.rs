@@ -7,6 +7,7 @@ pub type Result<T> = core::result::Result<T, Report<CustomError>>;
 pub enum CustomError {
     RepoError,
     UrlError,
+    RequestError,
     ExprError,
     ConfigError,
     CommitError(String),
@@ -20,6 +21,7 @@ impl Display for CustomError {
         match self {
             Self::RepoError => write!(f, "Repo Error"),
             Self::UrlError => write!(f, "URL Error"),
+            Self::RequestError => write!(f, "Request Error"),
             Self::ExprError => write!(f, "Expr Error"),
             Self::ConfigError => write!(f, "Config Error"),
             Self::CommitError(msg) => write!(f, "Commit Error: {msg}"),

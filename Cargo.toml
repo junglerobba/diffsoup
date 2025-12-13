@@ -13,7 +13,14 @@ gix = "0.75.0"
 jj-cli = "0.36.0"
 jj-lib = "0.36.0"
 ratatui = "0.29.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
 url = "2.5.7"
+
+[dependencies.reqwest]
+version = "0.12.25"
+default-features = false
+features = ["blocking", "rustls-tls", "json"]
 
 [lib]
 name = "diffsoup"
