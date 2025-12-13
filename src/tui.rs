@@ -8,10 +8,9 @@ use crossterm::{
 };
 use diffsoup::{
     diff::{BranchDiff, CommitDiff, calculate_branch_diff, get_commit, render_interdiff},
-    error::{CustomError, Result},
+    error::Result,
     trees::DiffTree,
 };
-use error_stack::ResultExt;
 use jj_lib::{
     ref_name::RefNameBuf,
     repo::{ReadonlyRepo, Repo},
@@ -64,11 +63,7 @@ pub struct AppState {
 }
 
 impl App {
-    pub fn new(workspace: Workspace) -> Result<Self> {
-        let repo = workspace
-            .repo_loader()
-            .load_at_head()
-            .change_context(CustomError::RepoError)?;
+    pub fn new(workspace: Workspace, repo: Arc<ReadonlyRepo>) -> Result<Self> {
         Ok(Self {
             should_quit: false,
             current_screen: Screen::Empty(None),
@@ -111,6 +106,10 @@ impl App {
 
     pub fn set_commit_history(&mut self, history: Vec<RefNameBuf>) {
         self.state.commit_history = history;
+    }
+
+    pub fn set_base_index(&mut self, index: usize) {
+        self.state.base_branch = index;
     }
 
     pub fn set_comparison_index(&mut self, index: usize) {
