@@ -9,6 +9,7 @@ use crossterm::{
 use diffsoup::{
     diff::{BranchDiff, CommitDiff, calculate_branch_diff, get_commit, render_interdiff},
     error::{CustomError, Result},
+    trees::DiffTree,
 };
 use error_stack::ResultExt;
 use jj_lib::{
@@ -161,7 +162,7 @@ impl App {
                 (&self.current_screen, &self.state.cache)
                 && view.rendered_width != last_size.width
             {
-                let Some(screen) = App::get_interdiff(
+                let Some((diff, title)) = App::get_interdiff(
                     self.get_selected_commit(branch_diff),
                     &self.workspace,
                     self.repo.as_ref(),
@@ -169,7 +170,11 @@ impl App {
                 ) else {
                     continue;
                 };
-                self.current_screen = screen;
+                self.current_screen = Screen::InterdiffView(DiffView {
+                    commit: title,
+                    diff,
+                    rendered_width: last_size.width,
+                });
             }
 
             if needs_redraw {
@@ -198,24 +203,25 @@ impl App {
         workspace: &Workspace,
         repo: &dyn Repo,
         render_width: u16,
-    ) -> Option<Screen> {
-        // TODO support single commit diff (no interdiff)
-        if let (Some(from), Some(to)) = (&commit_diff.from, &commit_diff.to)
-            && let (Ok(from_commit), Ok(to_commit)) = (
-                get_commit(&from.sha, workspace, repo),
-                get_commit(&to.sha, workspace, repo),
-            )
-        {
-            let diff = render_interdiff(&from_commit, &to_commit, workspace, repo, render_width)
-                .unwrap_or_else(|e| format!("{}", e));
-
-            let screen = Screen::InterdiffView(DiffView {
-                commit: to_commit.change_id().reverse_hex(),
-                diff,
-                rendered_width: render_width,
-            });
-            return Some(screen);
-        }
+    ) -> Option<(String, String)> {
+        let from_commit = if let Some(from) = &commit_diff.from {
+            get_commit(&from.sha, workspace, repo).ok()
+        } else {
+            None
+        };
+        let to_commit = if let Some(to) = &commit_diff.to {
+            get_commit(&to.sha, workspace, repo).ok()
+        } else {
+            None
+        };
+        let trees = DiffTree::from(from_commit.as_ref(), to_commit.as_ref());
+        if let Some(trees) = trees {
+            return Some((
+                render_interdiff(&trees, workspace, repo, render_width)
+                    .unwrap_or_else(|e| format!("{}", e)),
+                format!("{trees}"),
+            ));
+        };
         None
     }
 
@@ -265,13 +271,17 @@ impl App {
                     let Ok(size) = terminal.size() else {
                         return;
                     };
-                    if let Some(screen) = App::get_interdiff(
+                    if let Some((diff, title)) = App::get_interdiff(
                         self.get_selected_commit(&branch_diff),
                         &self.workspace,
                         self.repo.as_ref(),
                         size.width,
                     ) {
-                        self.current_screen = screen;
+                        self.current_screen = Screen::InterdiffView(DiffView {
+                            commit: title,
+                            diff,
+                            rendered_width: size.width,
+                        });
                         self.state.cache = Some(branch_diff);
                     } else {
                         self.current_screen = Screen::CommitList(branch_diff);

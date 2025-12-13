@@ -1,4 +1,7 @@
-use crate::error::{CustomError, Result};
+use crate::{
+    error::{CustomError, Result},
+    trees::DiffTree,
+};
 use error_stack::ResultExt;
 use jj_cli::{
     diff_util::{self, DiffFormat, DiffRenderer, DiffStatOptions, UnifiedDiffOptions},
@@ -297,15 +300,12 @@ fn calculate_commit_stats(commit: &Commit, repo: &dyn Repo) -> Result<DiffStats>
 }
 
 pub fn render_interdiff(
-    from: &Commit,
-    to: &Commit,
+    trees: &DiffTree,
     workspace: &Workspace,
     repo: &dyn Repo,
     width: u16,
 ) -> Result<String> {
-    let from_tree = rebase_to_dest_parent(repo, std::slice::from_ref(from), to)
-        .change_context(CustomError::RepoError)?;
-    let to_tree = to.tree();
+    let (from_tree, to_tree) = trees.get_trees(repo)?;
 
     let matcher = jj_lib::matchers::EverythingMatcher;
 
