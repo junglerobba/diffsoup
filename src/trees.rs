@@ -14,6 +14,9 @@ pub enum DiffTree<'a> {
 impl DiffTree<'_> {
     pub fn from<'a>(from: Option<&'a Commit>, to: Option<&'a Commit>) -> Option<DiffTree<'a>> {
         match (from, to) {
+            (Some(from), Some(to)) if from.id() == to.id() => {
+                Some(DiffTree::AddedCommit { commit: to })
+            }
             (Some(from), Some(to)) => Some(DiffTree::Interdiff { from, to }),
             (Some(commit), None) => Some(DiffTree::RemovedCommit { commit }),
             (None, Some(commit)) => Some(DiffTree::AddedCommit { commit }),

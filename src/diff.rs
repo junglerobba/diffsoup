@@ -42,7 +42,7 @@ impl CommitDiff {
     pub fn has_changes(&self) -> bool {
         match (&self.from, &self.to) {
             (None, Some(_)) | (Some(_), None) => true,
-            (Some(_), Some(_)) => self.stats.changed_files > 0,
+            (Some(from), Some(to)) => self.stats.changed_files > 0 && from.sha != to.sha,
             (None, None) => false,
         }
     }
@@ -161,7 +161,7 @@ pub fn calculate_branch_diff(
     workspace: &Workspace,
     repo: &dyn Repo,
 ) -> Result<BranchDiff> {
-    let fork_point_expr = format!("fork_point({} | {})", from_branch, to_branch);
+    let fork_point_expr = format!("fork_point({} | {} | trunk())", from_branch, to_branch);
 
     let from_expr = format!("{}..{}", fork_point_expr, from_branch);
     let from_commits = get_commits(&from_expr, workspace, repo)?;
@@ -236,6 +236,7 @@ pub fn calculate_branch_diff(
         });
 
         let stats = match (from_commit, to_commit) {
+            (Some(from), Some(to)) if from.id() == to.id() => calculate_commit_stats(to, repo),
             (Some(from), Some(to)) => calculate_diff_stats(from, to, repo),
             (Some(from), None) => calculate_commit_stats(from, repo),
             (None, Some(to)) => calculate_commit_stats(to, repo),

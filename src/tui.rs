@@ -544,7 +544,9 @@ impl App {
             (Some(from), Some(to)) if from.message != to.message => {
                 ("✎ ", Style::default().fg(Color::Cyan))
             }
-            (Some(_), Some(_)) if has_changes => ("~ ", Style::default().fg(Color::Yellow)),
+            (Some(from), Some(to)) if from.sha != to.sha && has_changes => {
+                ("~ ", Style::default().fg(Color::Yellow))
+            }
             _ => ("  ", Style::default().fg(Color::DarkGray)),
         };
 
