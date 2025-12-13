@@ -388,6 +388,14 @@ impl App {
                 self.state.interdiff_scroll = 0;
                 self.get_overview();
             }
+            (KeyCode::Char('y'), _) => {
+                let (Ok(mut clipboard), Screen::InterdiffView(diff_view)) =
+                    (arboard::Clipboard::new(), &self.current_screen)
+                else {
+                    return;
+                };
+                clipboard.set_text(&diff_view.diff).ok();
+            }
             _ => {}
         }
     }
@@ -492,7 +500,9 @@ impl App {
                     hide_text
                 )
             }
-            Screen::InterdiffView(_) => "q: Back | ↑↓: Scroll".to_string(),
+            Screen::InterdiffView(_) => {
+                "q: Back | ↑↓: Scroll | y: Copy diff to clipboard".to_string()
+            }
         };
         let footer = Paragraph::new(footer_text)
             .style(Style::default().fg(Color::Gray))
