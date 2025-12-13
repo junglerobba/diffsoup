@@ -307,6 +307,40 @@ impl App {
                 self.state.selected_commit_index = 0;
                 self.state.list_state.select(Some(0));
             }
+            (KeyCode::Char('['), _) => {
+                if self.state.base_branch > 0 {
+                    self.state.base_branch -= 1;
+                }
+            }
+            (KeyCode::Char(']'), _) => {
+                if self.state.base_branch < self.state.comparison_branch {
+                    self.state.base_branch += 1;
+                }
+            }
+            (KeyCode::Char('{'), _) => {
+                if self.state.comparison_branch > self.state.base_branch {
+                    self.state.comparison_branch -= 1;
+                }
+            }
+            (KeyCode::Char('}'), _) => {
+                if self.state.comparison_branch < self.state.commit_history.len().saturating_sub(1)
+                {
+                    self.state.comparison_branch += 1;
+                }
+            }
+            (KeyCode::Char('<'), _) => {
+                if self.state.base_branch > 0 && self.state.comparison_branch > 0 {
+                    self.state.base_branch -= 1;
+                    self.state.comparison_branch -= 1;
+                }
+            }
+            (KeyCode::Char('>'), _) => {
+                let max_index = self.state.commit_history.len().saturating_sub(1);
+                if self.state.base_branch < max_index && self.state.comparison_branch < max_index {
+                    self.state.base_branch += 1;
+                    self.state.comparison_branch += 1;
+                }
+            }
             (_, _) => {}
         }
     }
@@ -450,7 +484,7 @@ impl App {
                     "show"
                 };
                 format!(
-                    "q: Quit | ↑↓/jk: Navigate | Enter: View interdiff | h: {} unchanged",
+                    "q: Quit | ↑↓/jk: Navigate | Enter: View | h: {} unchanged | []: Base | {{}}: Comp | <>: Both",
                     hide_text
                 )
             }
