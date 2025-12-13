@@ -1,7 +1,10 @@
 mod tui;
 
 use clap::Parser;
-use diffsoup::repo::open;
+use diffsoup::{
+    pr::{PrFetcher, get_pr_fetcher},
+    repo::open,
+};
 use jj_lib::ref_name::RefNameBuf;
 use std::{
     path::PathBuf,
@@ -18,6 +21,9 @@ struct Args {
     #[arg(long, value_name = "TO")]
     to: Option<String>,
 
+    #[arg(value_name = "PULL REQUEST URL")]
+    pr_url: Option<String>,
+
     #[arg(short, long, default_value = ".")]
     repo: PathBuf,
 }
@@ -28,7 +34,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = open(&args.repo)?;
 
     let mut app = tui::App::new(workspace)?;
-    if let (Some(from), Some(to)) = (&args.from, &args.to) {
+    let pr = args
+        .pr_url
+        .map(|url| get_pr_fetcher(&url))
+        .unwrap_or(Ok(None))?;
+    if let Some(history) = pr.as_deref().map(PrFetcher::fetch_history) {
+        let commits = history?.0;
+        if commits.len() < 2 {
+            println!("Not enough commits found in PR");
+            process::exit(1);
+        }
+        app.set_comparison_index(commits.len() - 1);
+        app.set_commit_history(commits);
+    } else if let (Some(from), Some(to)) = (&args.from, &args.to) {
         let history = vec![RefNameBuf::from(from), RefNameBuf::from(to)];
         app.set_commit_history(history);
     } else {

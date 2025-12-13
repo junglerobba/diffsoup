@@ -113,6 +113,10 @@ impl App {
         self.state.commit_history = history;
     }
 
+    pub fn set_comparison_index(&mut self, index: usize) {
+        self.state.comparison_branch = index;
+    }
+
     pub fn get_overview(&mut self) {
         if let Some(diff) = self.state.cache.take() {
             self.current_screen = Screen::CommitList(diff);
