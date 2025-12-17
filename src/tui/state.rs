@@ -1,6 +1,9 @@
 use std::sync::mpsc::Sender;
 
-use diffsoup::diff::CommitDiff;
+use diffsoup::{
+    diff::CommitDiff,
+    pr::{PageDirection, Pagination},
+};
 use jj_lib::ref_name::RefNameBuf;
 use ratatui::widgets::ListState;
 
@@ -16,9 +19,7 @@ pub struct AppState {
     pub list_state: ListState,
     pub show_unchanged: bool,
     pub commit_list: Vec<RefNameBuf>,
-    pub offset: usize,
-    pub limit: Option<usize>,
-    pub last_page: bool,
+    pub next_page: Option<Pagination>,
     pub base_index: usize,
     pub comparison_index: usize,
     pub current_job: Option<JobId>,
@@ -121,9 +122,7 @@ impl AppState {
             list_state: ListState::default(),
             show_unchanged: false,
             commit_list: Vec::new(),
-            offset: 0,
-            limit: None,
-            last_page: false,
+            next_page: None,
             base_index: 0,
             comparison_index: 0,
             current_job: None,
@@ -138,23 +137,19 @@ impl AppState {
     pub fn handle_worker(&mut self, response: WorkerResponse) {
         match response {
             WorkerResponse::Error(msg) => self.screen = AppScreen::Error(Some(msg)),
-            WorkerResponse::LoadCommits {
-                commits,
-                offset,
-                limit,
-                last_page,
-            } => {
-                let length = commits.len();
-                self.offset = offset;
-                self.limit = limit;
-                self.last_page = last_page;
+            WorkerResponse::LoadCommits { page } => {
+                let length = page.items.len();
                 // insert new at start
-                self.commit_list.splice(0..0, commits);
+                self.commit_list.splice(0..0, page.items);
                 match &mut self.screen {
                     AppScreen::Loading => {
                         let job_id = self.next_job();
-                        let from = self.commit_list.len() - 2;
-                        let to = self.commit_list.len() - 1;
+                        let (from, to) = match page.direction {
+                            PageDirection::Backward => {
+                                (self.commit_list.len() - 2, self.commit_list.len() - 1)
+                            }
+                            PageDirection::Forward => (0, 1),
+                        };
                         let _ = self.worker_req_tx.send(WorkerMsg {
                             job_id,
                             msg: WorkerRequest::CalculateBranchDiff {
@@ -168,11 +163,16 @@ impl AppState {
                     }
                     AppScreen::List(list_view) => {
                         list_view.total_commits = self.commit_list.len();
-                        list_view.base_index += length;
-                        list_view.comparison_index += length;
+                        if let Some(pagination) = &self.next_page
+                            && matches!(pagination.direction(), PageDirection::Backward)
+                        {
+                            list_view.base_index += length;
+                            list_view.comparison_index += length;
+                        }
                     }
                     _ => {}
                 }
+                self.next_page = page.next;
             }
             WorkerResponse::CalculateBranchDiff { commits, from, to } => {
                 self.base_index = from;
@@ -199,13 +199,20 @@ impl AppState {
                     total_commits: self.commit_list.len(),
                     commits,
                 });
-                if !self.last_page && self.base_index == 0 {
+                let Some(next) = &self.next_page else {
+                    return;
+                };
+                let direction = next.direction();
+                let has_next = match direction {
+                    PageDirection::Backward => self.base_index == 0,
+                    PageDirection::Forward => self.comparison_index >= self.commit_list.len() - 1,
+                };
+                if has_next {
                     let job_id = self.next_job();
                     let _ = self.worker_req_tx.send(WorkerMsg {
                         job_id,
                         msg: WorkerRequest::LoadCommits {
-                            offset: self.offset,
-                            limit: None,
+                            pagination: Some(next.clone()),
                         },
                     });
                     self.current_job = Some(job_id);

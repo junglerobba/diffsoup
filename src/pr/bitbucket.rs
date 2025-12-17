@@ -6,7 +6,7 @@ use url::Url;
 
 use crate::{
     error::{CustomError, Result},
-    pr::{PrFetcher, PrHistory},
+    pr::{OffsetPagination, Page, PageDirection, Pagination, PrFetcher},
 };
 
 #[derive(Debug)]
@@ -70,7 +70,7 @@ struct PrActivity {
     values: Vec<PrActivityEntry>,
 }
 
-impl From<PrActivity> for PrHistory {
+impl From<PrActivity> for Page<RefNameBuf> {
     fn from(value: PrActivity) -> Self {
         let actions = value.values.iter().filter_map(|v| match v {
             PrActivityEntry::Rescoped(action) => Some(action),
@@ -87,10 +87,13 @@ impl From<PrActivity> for PrHistory {
         }
 
         Self {
-            commits,
-            offset: (value.start as usize) + value.limit.unwrap_or(value.values.len()),
-            limit: value.limit,
-            last_page: value.is_last_page,
+            items: commits,
+            next: (!value.is_last_page).then_some(Pagination::Offset(OffsetPagination {
+                offset: (value.start as usize) + value.limit.unwrap_or(value.values.len()),
+                limit: value.limit,
+                direction: PageDirection::Backward,
+            })),
+            direction: PageDirection::Backward,
         }
     }
 }
@@ -113,7 +116,17 @@ struct PrRescopeAction {
 }
 
 impl PrFetcher for BitbucketFetcher {
-    fn fetch_history(&self, offset: usize, limit: Option<usize>) -> Result<PrHistory> {
+    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<RefNameBuf>> {
+        let (offset, limit) = match pagination {
+            None => (0, None),
+            Some(Pagination::Offset(pagination)) => (pagination.offset, pagination.limit),
+            _ => {
+                return Err(CustomError::ProcessError(
+                    "offset based pagination is required for bitbucket".to_string(),
+                )
+                .into());
+            }
+        };
         let res: PrActivity = self
             .client
             .get(format!(

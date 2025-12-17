@@ -71,10 +71,7 @@ pub fn run(
     // init by loading commits
     let _ = app.worker_req_tx.send(WorkerMsg {
         job_id,
-        msg: WorkerRequest::LoadCommits {
-            offset: 0,
-            limit: None,
-        },
+        msg: WorkerRequest::LoadCommits { pagination: None },
     });
     app.current_job = Some(job_id);
 

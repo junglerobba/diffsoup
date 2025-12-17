@@ -1,6 +1,6 @@
 use jj_lib::ref_name::RefNameBuf;
 
-use crate::pr::{PrFetcher, PrHistory};
+use crate::pr::{Page, PageDirection, Pagination, PrFetcher};
 
 #[derive(Debug)]
 pub struct NoFetcher {
@@ -20,15 +20,13 @@ impl NoFetcher {
 impl PrFetcher for NoFetcher {
     fn fetch_history(
         &self,
-        _offset: usize,
-        _limit: Option<usize>,
-    ) -> crate::error::Result<PrHistory> {
+        _pagination: Option<&Pagination>,
+    ) -> crate::error::Result<Page<RefNameBuf>> {
         let commits = vec![RefNameBuf::from(&self.from), RefNameBuf::from(&self.to)];
-        Ok(PrHistory {
-            commits,
-            offset: 0,
-            limit: None,
-            last_page: true,
+        Ok(Page {
+            items: commits,
+            direction: PageDirection::Backward,
+            next: None,
         })
     }
 }

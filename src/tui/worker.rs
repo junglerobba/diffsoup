@@ -6,7 +6,7 @@ use std::{
 use diffsoup::{
     diff::{CommitDiff, calculate_branch_diff, get_commit},
     error::{CustomError, Result},
-    pr::PrFetcher,
+    pr::{Page, Pagination, PrFetcher},
     repo::ensure_commits_exist,
     trees::DiffTree,
 };
@@ -28,8 +28,7 @@ pub struct WorkerMsg<T> {
 #[derive(Debug, Clone)]
 pub enum WorkerRequest {
     LoadCommits {
-        offset: usize,
-        limit: Option<usize>,
+        pagination: Option<Pagination>,
     },
     CalculateBranchDiff {
         from: String,
@@ -59,10 +58,7 @@ pub enum WorkerResponse {
         scroll: u16,
     },
     LoadCommits {
-        commits: Vec<RefNameBuf>,
-        offset: usize,
-        limit: Option<usize>,
-        last_page: bool,
+        page: Page<RefNameBuf>,
     },
 }
 
@@ -77,16 +73,11 @@ pub fn spawn_worker_thread(
     std::thread::spawn(move || {
         while let Ok(request) = worker_request_rx.recv() {
             let response = match request.msg {
-                WorkerRequest::LoadCommits { offset, limit } => {
-                    match pr_fetcher.fetch_history(offset, limit) {
-                        Ok(pr) => {
-                            repo = ensure_commits_exist(pr.commits.iter(), repo)?;
-                            WorkerResponse::LoadCommits {
-                                commits: pr.commits,
-                                offset: pr.offset,
-                                limit: pr.limit,
-                                last_page: pr.last_page,
-                            }
+                WorkerRequest::LoadCommits { pagination } => {
+                    match pr_fetcher.fetch_history(pagination.as_ref()) {
+                        Ok(page) => {
+                            repo = ensure_commits_exist(page.items.iter(), repo)?;
+                            WorkerResponse::LoadCommits { page }
                         }
                         Err(e) => WorkerResponse::Error(format!("{:#?}", e)),
                     }

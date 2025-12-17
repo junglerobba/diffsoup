@@ -11,8 +11,51 @@ use crate::{
     pr::none::NoFetcher,
 };
 
+#[derive(Debug, Clone, Copy, Default)]
+pub enum PageDirection {
+    #[default]
+    Forward,
+    Backward,
+}
+
+#[derive(Debug, Clone)]
+pub struct Page<T> {
+    pub items: Vec<T>,
+    pub direction: PageDirection,
+    pub next: Option<Pagination>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OffsetPagination {
+    offset: usize,
+    limit: Option<usize>,
+    direction: PageDirection,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CursorPagination {
+    cursor: Option<String>,
+    limit: usize,
+    direction: PageDirection,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pagination {
+    Offset(OffsetPagination),
+    Cursor(CursorPagination),
+}
+
+impl Pagination {
+    pub fn direction(&self) -> PageDirection {
+        match self {
+            Pagination::Offset(offset) => offset.direction,
+            Pagination::Cursor(cursor) => cursor.direction,
+        }
+    }
+}
+
 pub trait PrFetcher: Debug + Send {
-    fn fetch_history(&self, offset: usize, limit: Option<usize>) -> Result<PrHistory>;
+    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<RefNameBuf>>;
 }
 
 pub fn get_pr_fetcher(
@@ -35,12 +78,4 @@ pub fn get_pr_fetcher(
         }
         (_, _, _) => Ok(None),
     }
-}
-
-#[derive(Debug)]
-pub struct PrHistory {
-    pub commits: Vec<RefNameBuf>,
-    pub offset: usize,
-    pub limit: Option<usize>,
-    pub last_page: bool,
 }
