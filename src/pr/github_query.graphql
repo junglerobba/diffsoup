@@ -1,0 +1,34 @@
+query(
+  $owner: String!,
+  $repo: String!,
+  $pr: Int!,
+  $cursor: String,
+  $limit: Int!,
+) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      timelineItems(
+        last: $limit,
+        before: $cursor,
+        itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT],
+      ) {
+        edges {
+          node {
+            ... on HeadRefForcePushedEvent {
+              beforeCommit {
+                oid
+              }
+              afterCommit {
+                oid
+              }
+            }
+          }
+        }
+        pageInfo {
+          hasPreviousPage
+          startCursor
+        }
+      }
+    }
+  }
+}

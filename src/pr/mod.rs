@@ -1,4 +1,5 @@
 mod bitbucket;
+mod github;
 mod none;
 
 use error_stack::ResultExt;
@@ -7,8 +8,7 @@ use std::fmt::Debug;
 
 use crate::{
     error::{CustomError, Result},
-    pr::bitbucket::BitbucketFetcher,
-    pr::none::NoFetcher,
+    pr::{bitbucket::BitbucketFetcher, github::GithubFetcher, none::NoFetcher},
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -69,7 +69,10 @@ pub fn get_pr_fetcher(
             let parsed = url::Url::parse(&url).change_context(CustomError::UrlError)?;
             let host = parsed.host_str().ok_or(CustomError::UrlError)?;
 
-            if host.contains("bitbucket") {
+            if host.contains("github.com") {
+                let token = std::env::var("GITHUB_TOKEN").ok();
+                Ok(Some(Box::new(GithubFetcher::new(&parsed, token)?)))
+            } else if host.contains("bitbucket") {
                 let token = std::env::var("BITBUCKET_TOKEN").ok();
                 Ok(Some(Box::new(BitbucketFetcher::new(&parsed, token)?)))
             } else {
