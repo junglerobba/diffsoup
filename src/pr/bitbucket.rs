@@ -60,7 +60,13 @@ impl BitbucketFetcher {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PrActivity {
+    is_last_page: bool,
+    limit: Option<usize>,
+    _next_page_start: Option<u32>,
+    _size: usize,
+    start: u32,
     values: Vec<PrActivityEntry>,
 }
 
@@ -71,16 +77,21 @@ impl From<PrActivity> for PrHistory {
             _ => None,
         });
 
-        let mut result = Vec::new();
+        let mut commits = Vec::new();
 
         for (i, action) in actions.rev().enumerate() {
-            if i == 0 {
-                result.push(RefNameBuf::from(&action.previous_from_hash));
+            if value.is_last_page && i == 0 {
+                commits.push(RefNameBuf::from(&action.previous_from_hash));
             }
-            result.push(RefNameBuf::from(&action.from_hash));
+            commits.push(RefNameBuf::from(&action.from_hash));
         }
 
-        Self(result)
+        Self {
+            commits,
+            offset: (value.start as usize) + value.limit.unwrap_or(value.values.len()),
+            limit: value.limit,
+            last_page: value.is_last_page,
+        }
     }
 }
 
@@ -102,12 +113,19 @@ struct PrRescopeAction {
 }
 
 impl PrFetcher for BitbucketFetcher {
-    fn fetch_history(&self) -> Result<PrHistory> {
+    fn fetch_history(&self, offset: usize, limit: Option<usize>) -> Result<PrHistory> {
         let res: PrActivity = self
             .client
             .get(format!(
-                "{}/rest/api/latest/projects/{}/repos/{}/pull-requests/{}/activities",
-                self.host, self.project, self.repo, self.pr_id
+                "{}/rest/api/latest/projects/{}/repos/{}/pull-requests/{}/activities?start={}{}",
+                self.host,
+                self.project,
+                self.repo,
+                self.pr_id,
+                offset,
+                limit
+                    .map(|limit| format!("&limit={limit}"))
+                    .unwrap_or_default()
             ))
             .send()
             .change_context(CustomError::RequestError)?
