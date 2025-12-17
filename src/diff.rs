@@ -26,12 +26,7 @@ use jj_lib::{
 };
 use std::{collections::HashMap, fs::canonicalize, path::PathBuf};
 
-#[derive(Debug, Default)]
-pub struct BranchDiff {
-    pub commits: Vec<CommitDiff>,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommitDiff {
     pub from: Option<CommitMeta>,
     pub to: Option<CommitMeta>,
@@ -48,13 +43,13 @@ impl CommitDiff {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommitMeta {
     pub sha: String,
     pub message: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct DiffStats {
     pub additions: usize,
     pub removals: usize,
@@ -160,7 +155,7 @@ pub fn calculate_branch_diff(
     to_branch: &str,
     workspace: &Workspace,
     repo: &dyn Repo,
-) -> Result<BranchDiff> {
+) -> Result<Vec<CommitDiff>> {
     let fork_point_expr = format!("fork_point({} | {} | trunk())", from_branch, to_branch);
 
     let from_expr = format!("{}..{}", fork_point_expr, from_branch);
@@ -251,9 +246,7 @@ pub fn calculate_branch_diff(
         });
     }
 
-    Ok(BranchDiff {
-        commits: commit_diffs,
-    })
+    Ok(commit_diffs)
 }
 
 fn calculate_diff_stats(from: &Commit, to: &Commit, repo: &dyn Repo) -> Result<DiffStats> {
