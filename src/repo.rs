@@ -1,12 +1,13 @@
 use crate::error::{CustomError, Result};
 use error_stack::ResultExt;
 use jj_cli::{
-    cli_util::find_workspace_dir,
+    cli_util::{find_workspace_dir, start_repo_transaction},
     config::{ConfigEnv, config_from_environment, default_config_layers},
 };
 use jj_lib::{
     backend::CommitId,
-    git,
+    config::{ConfigLayer, ConfigSource},
+    git::{self, GitRefKind, GitSettings, parse_git_ref},
     git_backend::GitBackend,
     local_working_copy::{LocalWorkingCopy, LocalWorkingCopyFactory},
     object_id::ObjectId,
@@ -18,10 +19,32 @@ use jj_lib::{
     },
 };
 use std::{path::Path, sync::Arc};
+use temp_dir::TempDir;
 
-// TODO support plain git repos
-// bit more complex because it would need to initialize a temporary colocated jj repo
-pub fn open(path: &Path) -> Result<Workspace> {
+pub struct RepoHandle {
+    pub repo: Arc<ReadonlyRepo>,
+    pub workspace: Workspace,
+    _tempdir: Option<TempDir>,
+}
+
+pub fn open(path: &Path) -> Result<RepoHandle> {
+    let workspace_path = path.join(".jj");
+    if !workspace_path.exists() {
+        return init_jj_repo(path);
+    };
+    let workspace = load_jj_repo(path)?;
+    let repo = workspace
+        .repo_loader()
+        .load_at_head()
+        .change_context(CustomError::RepoError)?;
+    Ok(RepoHandle {
+        repo,
+        workspace,
+        _tempdir: None,
+    })
+}
+
+fn load_jj_repo(path: &Path) -> Result<Workspace> {
     let mut raw_config = config_from_environment(default_config_layers());
     let mut config_env = ConfigEnv::from_environment();
     let loader = DefaultWorkspaceLoaderFactory
@@ -53,6 +76,81 @@ pub fn open(path: &Path) -> Result<Workspace> {
     loader
         .load(&settings, &store_factories, &working_copy_factories)
         .change_context(CustomError::RepoError)
+}
+
+fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
+    let workspace_root = TempDir::new()
+        .change_context(CustomError::RepoError)
+        .attach("could not create dir for jj workspace")?;
+
+    let repo_path = workspace_root.path().join(".jj/repo");
+
+    let git_repo = gix::open(git_repo_path).change_context(CustomError::RepoError)?;
+    let trunk_alias = get_trunk_alias(&git_repo)?;
+
+    let mut raw_config = config_from_environment(default_config_layers());
+    if let Some(ref symbol) = trunk_alias {
+        let mut layer = ConfigLayer::empty(ConfigSource::Workspace);
+        layer
+            .set_value("revset-aliases.trunk", symbol.to_string())
+            .change_context(CustomError::ConfigError)?;
+        raw_config.as_mut().add_layer(layer);
+    }
+
+    let mut config_env = ConfigEnv::from_environment();
+    config_env.reset_repo_path(&repo_path);
+    config_env
+        .reload_repo_config(&mut raw_config)
+        .change_context(CustomError::ConfigError)?;
+    config_env.reset_workspace_path(workspace_root.path());
+    config_env
+        .reload_workspace_config(&mut raw_config)
+        .change_context(CustomError::ConfigError)?;
+    let config = config_env
+        .resolve_config(&raw_config)
+        .change_context(CustomError::RepoError)?;
+    let settings = UserSettings::from_config(config).change_context(CustomError::RepoError)?;
+
+    let (workspace, repo) = Workspace::init_external_git(
+        &settings,
+        workspace_root.path(),
+        &git_repo_path.join(".git"),
+    )
+    .change_context(CustomError::RepoError)
+    .attach("could not initialize jj repo")?;
+
+    let git_settings =
+        GitSettings::from_settings(repo.settings()).change_context(CustomError::RepoError)?;
+    let mut tx = start_repo_transaction(&repo, &[]);
+    git::import_refs(tx.repo_mut(), &git_settings).change_context(CustomError::RepoError)?;
+
+    let repo = tx
+        .commit("import git refs")
+        .change_context(CustomError::RepoError)?;
+
+    Ok(RepoHandle {
+        workspace,
+        repo,
+        _tempdir: Some(workspace_root),
+    })
+}
+
+fn get_trunk_alias(repo: &gix::Repository) -> Result<Option<String>> {
+    for remote in ["upstream", "origin"] {
+        let ref_name = format!("refs/remotes/{remote}/HEAD");
+        if let Some(reference) = repo
+            .try_find_reference(&ref_name)
+            .change_context(CustomError::RepoError)?
+            && let Some(reference_name) = reference.target().try_name()
+            && let Some((GitRefKind::Bookmark, symbol)) = str::from_utf8(reference_name.as_bstr())
+                .ok()
+                .and_then(|name| parse_git_ref(name.as_ref()))
+        {
+            let symbol = symbol.name.to_remote_symbol(remote.as_ref());
+            return Ok(Some(symbol.to_string()));
+        }
+    }
+    Ok(None)
 }
 
 pub fn ensure_commits_exist<'a, I>(shas: I, repo: &impl Repo) -> Result<Vec<&'a str>>

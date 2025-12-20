@@ -24,8 +24,9 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let workspace = open(&args.repo)?;
-    let repo = workspace.repo_loader().load_at_head()?;
+    let handle = open(&args.repo)?;
+    let workspace = handle.workspace;
+    let repo = handle.repo;
 
     let pr = get_pr_fetcher(args.pr_url, args.from, args.to)?
         .expect("either a PR URL or --from  and --to need to be provided");
