@@ -7,7 +7,7 @@ use diffsoup::{
     diff::{CommitDiff, calculate_branch_diff, get_commit},
     error::{CustomError, Result},
     pr::{Page, Pagination, PrFetcher},
-    repo::ensure_commits_exist,
+    repo::{ensure_commits_exist, fetch_commits},
     trees::DiffTree,
 };
 use error_stack::ResultExt;
@@ -77,7 +77,21 @@ pub fn spawn_worker_thread(
                 WorkerRequest::LoadCommits { pagination } => {
                     match pr_fetcher.fetch_history(pagination.as_ref()) {
                         Ok(page) => {
-                            repo = ensure_commits_exist(page.items.iter(), repo)?;
+                            let missing = ensure_commits_exist(page.items.iter(), repo.as_ref())?;
+                            if !missing.is_empty() {
+                                worker_response_tx
+                                    .send(WorkerMsg {
+                                        job_id: request.job_id,
+                                        msg: WorkerResponse::Loading(format!(
+                                            "Missing {} commits, fetching from remote...",
+                                            missing.len()
+                                        )),
+                                    })
+                                    .change_context(CustomError::ProcessError(
+                                        "worker: error sending response".to_string(),
+                                    ))?;
+                                repo = fetch_commits(missing.into_iter(), repo)?;
+                            };
                             WorkerResponse::LoadCommits { page }
                         }
                         Err(e) => WorkerResponse::Error(format!("{:#?}", e)),

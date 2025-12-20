@@ -55,7 +55,7 @@ pub fn open(path: &Path) -> Result<Workspace> {
         .change_context(CustomError::RepoError)
 }
 
-pub fn ensure_commits_exist<'a, I>(shas: I, repo: Arc<ReadonlyRepo>) -> Result<Arc<ReadonlyRepo>>
+pub fn ensure_commits_exist<'a, I>(shas: I, repo: &impl Repo) -> Result<Vec<&'a str>>
 where
     I: Iterator<Item = &'a RefNameBuf>,
 {
@@ -77,11 +77,18 @@ where
         .into_iter()
         .flatten()
         .collect::<Vec<&str>>();
-    if missing.is_empty() {
-        return Ok(repo);
-    } else {
-        println!("Missing {} commits, fetching...", missing.len());
-    }
+    Ok(missing)
+}
+
+pub fn fetch_commits<'a, I>(commits: I, repo: Arc<ReadonlyRepo>) -> Result<Arc<ReadonlyRepo>>
+where
+    I: Iterator<Item = &'a str>,
+{
+    let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
+        return Err(CustomError::CommitError("not backed by a git repo".to_string()).into());
+    };
+    let git_repo = git_backend.git_repo();
+
     let remote = git_repo
         .find_default_remote(gix::remote::Direction::Fetch)
         .transpose()
@@ -91,8 +98,7 @@ where
         ))?;
 
     let remote_name = remote.name().map(|n| n.as_ref()).unwrap_or("origin".into());
-    let refspecs: Vec<String> = missing
-        .iter()
+    let refspecs: Vec<String> = commits
         .map(|sha| format!("{}:refs/remotes/{}/{}", sha, remote_name, sha))
         .collect();
 
