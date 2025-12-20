@@ -26,7 +26,7 @@ pub fn spawn_ui_thread(
     action_tx: UiSender,
     view_rx: Receiver<AppScreen>,
 ) -> JoinHandle<anyhow::Result<()>> {
-    let mut screen = AppScreen::Loading;
+    let mut screen = AppScreen::Loading(None);
     std::thread::spawn(move || {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -211,7 +211,7 @@ fn draw(screen: &AppScreen, f: &mut ratatui::Frame) {
 
     // Render header
     let header_text = match screen {
-        AppScreen::Loading => "diffsoup - Loading...".to_string(),
+        AppScreen::Loading(_) => "diffsoup - Loading...".to_string(),
         AppScreen::Exit => "diffsoup - Exiting...".to_string(),
         AppScreen::Error(_) => "diffsoup - Error".to_string(),
         AppScreen::List(list_view) => {
@@ -240,8 +240,12 @@ fn draw(screen: &AppScreen, f: &mut ratatui::Frame) {
 
     // Render main content
     match screen {
-        AppScreen::Loading => {
-            render_message(f, chunks[1], "Loading...");
+        AppScreen::Loading(msg) => {
+            if let Some(msg) = msg {
+                render_message(f, chunks[1], msg);
+            } else {
+                render_message(f, chunks[1], "Loading...");
+            };
         }
         AppScreen::Exit => {}
         AppScreen::Error(Some(msg)) => {
@@ -260,7 +264,7 @@ fn draw(screen: &AppScreen, f: &mut ratatui::Frame) {
 
     // Render footer
     let footer_text = match screen {
-        AppScreen::Loading | AppScreen::Exit | AppScreen::Error(_) => "".to_string(),
+        AppScreen::Loading(_) | AppScreen::Exit | AppScreen::Error(_) => "".to_string(),
         AppScreen::List(list_view) => {
             let hide_text = if list_view.show_unchanged {
                 "hide"

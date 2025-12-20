@@ -47,6 +47,7 @@ pub enum WorkerRequest {
 #[derive(Debug, Clone)]
 pub enum WorkerResponse {
     Error(String),
+    Loading(String),
     CalculateBranchDiff {
         commits: Vec<CommitDiff>,
         from: usize,

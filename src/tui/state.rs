@@ -26,10 +26,9 @@ pub struct AppState {
     pub worker_req_tx: Sender<WorkerMsg<WorkerRequest>>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub enum AppScreen {
-    #[default]
-    Loading,
+    Loading(Option<String>),
     Exit,
     Error(Option<String>),
     List(ListView),
@@ -117,7 +116,7 @@ impl ScrollEvent {
 impl AppState {
     pub fn new(worker_req_tx: Sender<WorkerMsg<WorkerRequest>>) -> Self {
         Self {
-            screen: AppScreen::Loading,
+            screen: AppScreen::Loading(None),
             screen_size: (0, 0),
             list_state: ListState::default(),
             show_unchanged: false,
@@ -137,12 +136,13 @@ impl AppState {
     pub fn handle_worker(&mut self, response: WorkerResponse) {
         match response {
             WorkerResponse::Error(msg) => self.screen = AppScreen::Error(Some(msg)),
+            WorkerResponse::Loading(msg) => self.screen = AppScreen::Loading(Some(msg)),
             WorkerResponse::LoadCommits { page } => {
                 let length = page.items.len();
                 // insert new at start
                 self.commit_list.splice(0..0, page.items);
                 match &mut self.screen {
-                    AppScreen::Loading => {
+                    AppScreen::Loading(_) => {
                         let job_id = self.next_job();
                         let (from, to) = match page.direction {
                             PageDirection::Backward => {
