@@ -71,9 +71,17 @@ pub fn get_pr_fetcher(
 
             if host.contains("github.com") {
                 let token = std::env::var("GITHUB_TOKEN").ok();
+                if token.is_none() {
+                    println!(
+                        "WARNING: GITHUB_TOKEN is not set, authentication might fail or you could run into rate limits!"
+                    );
+                }
                 Ok(Some(Box::new(GithubFetcher::new(&parsed, token)?)))
             } else if host.contains("bitbucket") {
                 let token = std::env::var("BITBUCKET_TOKEN").ok();
+                if token.is_none() {
+                    println!("WARNING: BITBUCKET_TOKEN is not set, authentication might fail!");
+                }
                 Ok(Some(Box::new(BitbucketFetcher::new(&parsed, token)?)))
             } else {
                 Ok(None)
