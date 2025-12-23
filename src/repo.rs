@@ -90,9 +90,9 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
 
     let mut raw_config = config_from_environment(default_config_layers());
     if let Some(ref symbol) = trunk_alias {
-        let mut layer = ConfigLayer::empty(ConfigSource::Workspace);
+        let mut layer = ConfigLayer::empty(ConfigSource::User);
         layer
-            .set_value("revset-aliases.trunk", symbol.to_string())
+            .set_value("revset-aliases.\"trunk()\"", symbol.to_string())
             .change_context(CustomError::ConfigError)?;
         raw_config.as_mut().add_layer(layer);
     }
