@@ -43,7 +43,11 @@ impl Display for DiffTree<'_> {
     }
 }
 
-fn write_virtual_tree(description: &str, tree: &MergedTree, repo: &dyn Repo) -> Result<MergedTree> {
+fn write_virtual_tree(
+    description: &str,
+    tree: &MergedTree,
+    repo: &impl Repo,
+) -> Result<MergedTree> {
     const COMMIT_DESCRIPTION_PATH: &str = ".__COMMIT_MESSAGE__";
     let path = RepoPathBuf::from_relative_path(Path::new(COMMIT_DESCRIPTION_PATH))
         .change_context(CustomError::RepoError)?;
@@ -68,7 +72,7 @@ fn write_virtual_tree(description: &str, tree: &MergedTree, repo: &dyn Repo) -> 
 }
 
 impl DiffTree<'_> {
-    pub fn get_trees(&self, repo: &dyn Repo) -> Result<(MergedTree, MergedTree)> {
+    pub fn get_trees(&self, repo: &impl Repo) -> Result<(MergedTree, MergedTree)> {
         match self {
             Self::Interdiff { from, to } => {
                 let rebased = rebase_to_dest_parent(repo, std::slice::from_ref(from), to)

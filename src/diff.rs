@@ -59,7 +59,7 @@ pub struct DiffStats {
 fn evaluate_revset_expr<'a>(
     expr: &str,
     workspace: &Workspace,
-    repo: &'a dyn Repo,
+    repo: &'a impl Repo,
 ) -> Result<Box<dyn Revset + 'a>> {
     let aliases_map = &revset_util::load_revset_aliases(&Ui::null(), workspace.settings().config())
         .map_err(|_| CustomError::RepoError)?;
@@ -91,7 +91,7 @@ fn evaluate_revset_expr<'a>(
         .change_context(CustomError::ExprError)
 }
 
-pub fn get_commit(expr: &str, workspace: &Workspace, repo: &dyn Repo) -> Result<Commit> {
+pub fn get_commit(expr: &str, workspace: &Workspace, repo: &impl Repo) -> Result<Commit> {
     let revset = evaluate_revset_expr(expr, workspace, repo)?;
     let mut iter = revset.iter().commits(repo.store());
     match (iter.next(), iter.next()) {
@@ -107,7 +107,7 @@ pub fn get_commit(expr: &str, workspace: &Workspace, repo: &dyn Repo) -> Result<
     }
 }
 
-fn get_commits(expr: &str, workspace: &Workspace, repo: &dyn Repo) -> Result<Vec<Commit>> {
+fn get_commits(expr: &str, workspace: &Workspace, repo: &impl Repo) -> Result<Vec<Commit>> {
     let revset = evaluate_revset_expr(expr, workspace, repo)?;
     revset
         .iter()
@@ -129,7 +129,7 @@ enum DiffSource {
 }
 
 impl DiffSource {
-    pub fn from_commit(commit: &Commit, repo: &dyn Repo) -> Result<Self> {
+    pub fn from_commit(commit: &Commit, repo: &impl Repo) -> Result<Self> {
         if let Some(git_backend) = repo.store().backend_impl::<GitBackend>() {
             let object_id = gix::ObjectId::try_from(commit.id().as_bytes())
                 .change_context(CustomError::RepoError)?;
@@ -154,7 +154,7 @@ pub fn calculate_branch_diff(
     from_branch: &str,
     to_branch: &str,
     workspace: &Workspace,
-    repo: &dyn Repo,
+    repo: &impl Repo,
 ) -> Result<Vec<CommitDiff>> {
     let fork_point_expr = format!("fork_point({} | {} | trunk())", from_branch, to_branch);
 
@@ -249,7 +249,7 @@ pub fn calculate_branch_diff(
     Ok(commit_diffs)
 }
 
-fn calculate_diff_stats(from: &Commit, to: &Commit, repo: &dyn Repo) -> Result<DiffStats> {
+fn calculate_diff_stats(from: &Commit, to: &Commit, repo: &impl Repo) -> Result<DiffStats> {
     let from_tree = rebase_to_dest_parent(repo, std::slice::from_ref(from), to)
         .change_context(CustomError::RepoError)?;
     let to_tree = to.tree();
@@ -277,7 +277,7 @@ fn calculate_diff_stats(from: &Commit, to: &Commit, repo: &dyn Repo) -> Result<D
     })
 }
 
-fn calculate_commit_stats(commit: &Commit, repo: &dyn Repo) -> Result<DiffStats> {
+fn calculate_commit_stats(commit: &Commit, repo: &impl Repo) -> Result<DiffStats> {
     let parents: Vec<Commit> = commit
         .parents()
         .collect::<std::result::Result<Vec<_>, _>>()
@@ -296,7 +296,7 @@ fn calculate_commit_stats(commit: &Commit, repo: &dyn Repo) -> Result<DiffStats>
 pub fn render_interdiff(
     trees: &DiffTree,
     workspace: &Workspace,
-    repo: &dyn Repo,
+    repo: &impl Repo,
     width: u16,
 ) -> Result<String> {
     let (from_tree, to_tree) = trees.get_trees(repo)?;
