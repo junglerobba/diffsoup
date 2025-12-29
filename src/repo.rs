@@ -79,14 +79,18 @@ fn load_jj_repo(path: &Path) -> Result<Workspace> {
 }
 
 fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
+    let git_repo_path = git_repo_path
+        .canonicalize()
+        .change_context(CustomError::RepoError)
+        .attach("failed to resolve repository path")?;
+
+    let git_repo = gix::open(&git_repo_path).change_context(CustomError::RepoError)?;
+    let trunk_alias = get_trunk_alias(&git_repo)?;
+
     let workspace_root = TempDir::new()
         .change_context(CustomError::RepoError)
         .attach("could not create dir for jj workspace")?;
-
     let repo_path = workspace_root.path().join(".jj/repo");
-
-    let git_repo = gix::open(git_repo_path).change_context(CustomError::RepoError)?;
-    let trunk_alias = get_trunk_alias(&git_repo)?;
 
     let mut raw_config = config_from_environment(default_config_layers());
     if let Some(ref symbol) = trunk_alias {
@@ -111,13 +115,10 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
         .change_context(CustomError::RepoError)?;
     let settings = UserSettings::from_config(config).change_context(CustomError::RepoError)?;
 
-    let (workspace, repo) = Workspace::init_external_git(
-        &settings,
-        workspace_root.path(),
-        &git_repo_path.join(".git"),
-    )
-    .change_context(CustomError::RepoError)
-    .attach("could not initialize jj repo")?;
+    let (workspace, repo) =
+        Workspace::init_external_git(&settings, workspace_root.path(), git_repo.path())
+            .change_context(CustomError::RepoError)
+            .attach("could not initialize jj repo")?;
 
     let git_settings =
         GitSettings::from_settings(repo.settings()).change_context(CustomError::RepoError)?;
