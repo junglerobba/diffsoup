@@ -37,7 +37,9 @@ impl CommitDiff {
     pub fn has_changes(&self) -> bool {
         match (&self.from, &self.to) {
             (None, Some(_)) | (Some(_), None) => true,
-            (Some(from), Some(to)) => self.stats.changed_files > 0 && from.sha != to.sha,
+            (Some(from), Some(to)) => {
+                (self.stats.changed_files > 0 || from.message != to.message) && from.sha != to.sha
+            }
             (None, None) => false,
         }
     }
