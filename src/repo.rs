@@ -8,7 +8,7 @@ use jj_lib::{
     backend::CommitId,
     commit::Commit,
     config::{ConfigLayer, ConfigSource},
-    git::{self, GitRefKind, GitSettings, parse_git_ref},
+    git::{self, GitImportOptions, GitRefKind, parse_git_ref},
     git_backend::GitBackend,
     local_working_copy::{LocalWorkingCopy, LocalWorkingCopyFactory},
     repo::{ReadonlyRepo, Repo, StoreFactories},
@@ -17,7 +17,7 @@ use jj_lib::{
         DefaultWorkspaceLoaderFactory, WorkingCopyFactories, Workspace, WorkspaceLoaderFactory,
     },
 };
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 use temp_dir::TempDir;
 
 pub struct RepoHandle {
@@ -119,10 +119,16 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
             .change_context(CustomError::RepoError)
             .attach("could not initialize jj repo")?;
 
-    let git_settings =
-        GitSettings::from_settings(repo.settings()).change_context(CustomError::RepoError)?;
     let mut tx = start_repo_transaction(&repo, &[]);
-    git::import_refs(tx.repo_mut(), &git_settings).change_context(CustomError::RepoError)?;
+    git::import_refs(
+        tx.repo_mut(),
+        &GitImportOptions {
+            auto_local_bookmark: false,
+            abandon_unreachable_commits: false,
+            remote_auto_track_bookmarks: HashMap::new(),
+        },
+    )
+    .change_context(CustomError::RepoError)?;
 
     let repo = tx
         .commit("import git refs")
