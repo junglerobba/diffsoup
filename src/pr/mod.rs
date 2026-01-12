@@ -3,7 +3,7 @@ mod github;
 mod none;
 
 use error_stack::ResultExt;
-use jj_lib::ref_name::RefNameBuf;
+use jj_lib::backend::CommitId;
 use std::fmt::Debug;
 
 use crate::{
@@ -55,7 +55,7 @@ impl Pagination {
 }
 
 pub trait PrFetcher: Debug + Send {
-    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<RefNameBuf>>;
+    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<CommitId>>;
 }
 
 pub fn get_pr_fetcher(

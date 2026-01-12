@@ -1,5 +1,5 @@
 use error_stack::ResultExt;
-use jj_lib::ref_name::RefNameBuf;
+use jj_lib::backend::CommitId;
 use reqwest::header::{AUTHORIZATION, HeaderMap, USER_AGENT};
 use serde::Deserialize;
 use serde_json::json;
@@ -111,8 +111,10 @@ pub struct PageInfo {
     start_cursor: Option<String>,
 }
 
-impl From<GraphQlResponse> for Page<RefNameBuf> {
-    fn from(value: GraphQlResponse) -> Self {
+impl TryFrom<GraphQlResponse> for Page<CommitId> {
+    type Error = error_stack::Report<CustomError>;
+
+    fn try_from(value: GraphQlResponse) -> Result<Self> {
         let page_info = value.data.repository.pull_request.timeline_items.page_info;
         let mut commits = Vec::new();
         for (i, entry) in value
@@ -125,12 +127,16 @@ impl From<GraphQlResponse> for Page<RefNameBuf> {
             .enumerate()
         {
             if !page_info.has_previous_page && i == 0 {
-                commits.push(RefNameBuf::from(&entry.node.before_commit.oid));
+                commits.push(CommitId::try_from_hex(&entry.node.before_commit.oid).ok_or(
+                    CustomError::CommitError("invalid commit hash from github".into()),
+                )?);
             }
-            commits.push(RefNameBuf::from(&entry.node.after_commit.oid));
+            commits.push(CommitId::try_from_hex(&entry.node.after_commit.oid).ok_or(
+                CustomError::CommitError("invalid commit hash from github".into()),
+            )?);
         }
 
-        Self {
+        Ok(Self {
             items: commits,
             next: page_info.has_previous_page.then_some(Pagination::Cursor(
                 super::CursorPagination {
@@ -146,12 +152,12 @@ impl From<GraphQlResponse> for Page<RefNameBuf> {
                 },
             )),
             direction: PageDirection::Backward,
-        }
+        })
     }
 }
 
 impl PrFetcher for GithubFetcher {
-    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<RefNameBuf>> {
+    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<CommitId>> {
         let (cursor, limit) = match pagination {
             None => (None.as_ref(), DEFAULT_PAGE_SIZE),
             Some(Pagination::Cursor(pagination)) => (pagination.cursor.as_ref(), pagination.limit),
@@ -180,6 +186,6 @@ impl PrFetcher for GithubFetcher {
             .send()
             .change_context(CustomError::RequestError)?;
         let res: GraphQlResponse = res.json().change_context(CustomError::RequestError)?;
-        Ok(res.into())
+        res.try_into()
     }
 }

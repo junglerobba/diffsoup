@@ -10,6 +10,7 @@ use jj_cli::{
     ui::Ui,
 };
 use jj_lib::{
+    backend::CommitId,
     commit::Commit,
     conflicts::ConflictMarkerStyle,
     copies::CopyRecords,
@@ -18,13 +19,14 @@ use jj_lib::{
     repo::Repo,
     repo_path::RepoPathUiConverter,
     revset::{
-        self, Revset, RevsetDiagnostics, RevsetExtensions, RevsetIteratorExt, RevsetParseContext,
-        RevsetWorkspaceContext, SymbolResolver, SymbolResolverExtension,
+        self, ResolvedRevsetExpression, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression,
+        RevsetExtensions, RevsetIteratorExt, RevsetParseContext, RevsetWorkspaceContext,
+        SymbolResolver, SymbolResolverExtension,
     },
     rewrite::rebase_to_dest_parent,
     workspace::Workspace,
 };
-use std::{collections::HashMap, fs::canonicalize, path::PathBuf};
+use std::{collections::HashMap, fs::canonicalize, path::PathBuf, sync::Arc};
 
 #[derive(Debug, Clone)]
 pub struct CommitDiff {
@@ -58,60 +60,16 @@ pub struct DiffStats {
     pub changed_files: usize,
 }
 
-fn evaluate_revset_expr<'a>(
-    expr: &str,
-    workspace: &Workspace,
-    repo: &'a impl Repo,
-) -> Result<Box<dyn Revset + 'a>> {
-    let aliases_map = &revset_util::load_revset_aliases(&Ui::null(), workspace.settings().config())
-        .map_err(|_| CustomError::RepoError)?;
-    let cwd = canonicalize(PathBuf::from(".")).change_context(CustomError::RepoError)?;
-    let context = RevsetParseContext {
-        aliases_map,
-        local_variables: HashMap::new(),
-        user_email: "",
-        date_pattern_context: chrono::Utc::now().fixed_offset().into(),
-        default_ignored_remote: None,
-        use_glob_by_default: false,
-        extensions: &RevsetExtensions::default(),
-        workspace: Some(RevsetWorkspaceContext {
-            path_converter: &RepoPathUiConverter::Fs {
-                cwd,
-                base: workspace.workspace_root().to_owned(),
-            },
-            workspace_name: workspace.workspace_name(),
-        }),
-    };
-    let expression = revset::parse(&mut RevsetDiagnostics::default(), expr, &context)
-        .change_context(CustomError::ExprError)?;
-    let symbol_resolver = SymbolResolver::new(repo, &[] as &[Box<dyn SymbolResolverExtension>]);
-    let resolved = expression
-        .resolve_user_expression(repo, &symbol_resolver)
-        .change_context(CustomError::ExprError)?;
-    resolved
-        .evaluate(repo)
-        .change_context(CustomError::ExprError)
+pub fn get_commit(sha: &CommitId, repo: &impl Repo) -> Result<Commit> {
+    repo.store()
+        .get_commit(sha)
+        .change_context(CustomError::RepoError)
 }
 
-pub fn get_commit(expr: &str, workspace: &Workspace, repo: &impl Repo) -> Result<Commit> {
-    let revset = evaluate_revset_expr(expr, workspace, repo)?;
-    let mut iter = revset.iter().commits(repo.store());
-    match (iter.next(), iter.next()) {
-        (Some(Ok(commit)), None) => Ok(commit),
-        (Some(_), Some(_)) => Err(CustomError::CommitError(
-            "expression resolved to more than one commit".to_string(),
-        )
-        .into()),
-        (_, _) => Err(CustomError::CommitError(
-            "expression didn't resolve to a commit".to_string(),
-        )
-        .into()),
-    }
-}
-
-fn get_commits(expr: &str, workspace: &Workspace, repo: &impl Repo) -> Result<Vec<Commit>> {
-    let revset = evaluate_revset_expr(expr, workspace, repo)?;
+fn get_commits(revset: Arc<ResolvedRevsetExpression>, repo: &impl Repo) -> Result<Vec<Commit>> {
     revset
+        .evaluate(repo)
+        .change_context(CustomError::ExprError)?
         .iter()
         .commits(repo.store())
         .collect::<std::result::Result<Vec<_>, _>>()
@@ -152,19 +110,63 @@ impl DiffSource {
     }
 }
 
+fn parse_revset_expr(
+    expr: &str,
+    workspace: &Workspace,
+    repo: &impl Repo,
+    aliases_map: &RevsetAliasesMap,
+) -> Result<Arc<ResolvedRevsetExpression>> {
+    let cwd = canonicalize(PathBuf::from(".")).change_context(CustomError::RepoError)?;
+    let context = RevsetParseContext {
+        aliases_map,
+        local_variables: HashMap::new(),
+        user_email: "",
+        date_pattern_context: chrono::Utc::now().fixed_offset().into(),
+        default_ignored_remote: None,
+        use_glob_by_default: false,
+        extensions: &RevsetExtensions::default(),
+        workspace: Some(RevsetWorkspaceContext {
+            path_converter: &RepoPathUiConverter::Fs {
+                cwd,
+                base: workspace.workspace_root().to_owned(),
+            },
+            workspace_name: workspace.workspace_name(),
+        }),
+    };
+    let expression = revset::parse(&mut RevsetDiagnostics::default(), expr, &context)
+        .change_context(CustomError::ExprError)?;
+    let symbol_resolver = SymbolResolver::new(repo, &[] as &[Box<dyn SymbolResolverExtension>]);
+    expression
+        .resolve_user_expression(repo, &symbol_resolver)
+        .change_context(CustomError::ExprError)
+}
+
 pub fn calculate_branch_diff(
-    from_branch: &str,
-    to_branch: &str,
+    from_branch: &CommitId,
+    to_branch: &CommitId,
     workspace: &Workspace,
     repo: &impl Repo,
 ) -> Result<Vec<CommitDiff>> {
-    let fork_point_expr = format!("fork_point({} | {} | trunk())", from_branch, to_branch);
+    let aliases_map = &revset_util::load_revset_aliases(&Ui::null(), workspace.settings().config())
+        .map_err(|_| CustomError::RepoError)?;
+    let trunk = parse_revset_expr("trunk()", workspace, repo, aliases_map)?;
 
-    let from_expr = format!("{}..{}", fork_point_expr, from_branch);
-    let from_commits = get_commits(&from_expr, workspace, repo)?;
+    let from_branch = RevsetExpression::commit(from_branch.clone());
+    let to_branch = RevsetExpression::commit(to_branch.clone());
+    let fork_point_expr = Arc::new(RevsetExpression::ForkPoint(RevsetExpression::union_all(&[
+        from_branch.clone(),
+        to_branch.clone(),
+        trunk.clone(),
+    ])));
 
-    let to_expr = format!("::{} ~ ::trunk()", to_branch);
-    let to_commits = get_commits(&to_expr, workspace, repo)?;
+    let from_expr = fork_point_expr.range(&from_branch.clone());
+    let from_commits = get_commits(from_expr, repo)?;
+
+    let to_expr = Arc::new(RevsetExpression::Difference(
+        to_branch.ancestors(),
+        trunk.ancestors(),
+    ));
+    let to_commits = get_commits(to_expr, repo)?;
 
     let from_sources = from_commits
         .iter()

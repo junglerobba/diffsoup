@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use diffsoup::pr::PrFetcher;
-use jj_lib::{repo::ReadonlyRepo, workspace::Workspace};
+use jj_lib::{backend::CommitId, repo::ReadonlyRepo, workspace::Workspace};
 
 use crate::tui::{
     app::spawn_ui_thread,
@@ -127,8 +127,8 @@ pub fn run(
                             msg: WorkerRequest::CalculateBranchDiff {
                                 from_index,
                                 to_index,
-                                from: from.into(),
-                                to: to.into(),
+                                from: from.clone(),
+                                to: to.clone(),
                             },
                         })?;
                         app.current_job = Some(job_id);
@@ -142,8 +142,14 @@ pub fn run(
                         app.worker_req_tx.send(WorkerMsg {
                             job_id,
                             msg: WorkerRequest::RenderInterdiff {
-                                from: entry.from.as_ref().map(|e| e.sha.clone()),
-                                to: entry.to.as_ref().map(|e| e.sha.clone()),
+                                from: entry
+                                    .from
+                                    .as_ref()
+                                    .and_then(|e| CommitId::try_from_hex(e.sha.clone())),
+                                to: entry
+                                    .to
+                                    .as_ref()
+                                    .and_then(|e| CommitId::try_from_hex(e.sha.clone())),
                                 render_width: app.screen_size.0,
                                 scroll: 0,
                             },
@@ -162,8 +168,8 @@ pub fn run(
                             msg: WorkerRequest::CalculateBranchDiff {
                                 from_index: app.base_index,
                                 to_index: app.comparison_index,
-                                from: from.into(),
-                                to: to.into(),
+                                from: from.clone(),
+                                to: to.clone(),
                             },
                         })?;
                         app.current_job = Some(job_id);

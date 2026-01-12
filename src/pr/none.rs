@@ -1,6 +1,9 @@
-use jj_lib::ref_name::RefNameBuf;
+use jj_lib::backend::CommitId;
 
-use crate::pr::{Page, PageDirection, Pagination, PrFetcher};
+use crate::{
+    error::CustomError,
+    pr::{Page, PageDirection, Pagination, PrFetcher},
+};
 
 #[derive(Debug)]
 pub struct NoFetcher {
@@ -21,8 +24,15 @@ impl PrFetcher for NoFetcher {
     fn fetch_history(
         &self,
         _pagination: Option<&Pagination>,
-    ) -> crate::error::Result<Page<RefNameBuf>> {
-        let commits = vec![RefNameBuf::from(&self.from), RefNameBuf::from(&self.to)];
+    ) -> crate::error::Result<Page<CommitId>> {
+        let commits = vec![
+            CommitId::try_from_hex(&self.from).ok_or(CustomError::CommitError(
+                "must provide a valid commit hash".into(),
+            ))?,
+            CommitId::try_from_hex(&self.to).ok_or(CustomError::CommitError(
+                "must provide a valid commit hash".into(),
+            ))?,
+        ];
         Ok(Page {
             items: commits,
             direction: PageDirection::Backward,

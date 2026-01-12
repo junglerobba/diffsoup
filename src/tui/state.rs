@@ -4,7 +4,7 @@ use diffsoup::{
     diff::CommitDiff,
     pr::{PageDirection, Pagination},
 };
-use jj_lib::ref_name::RefNameBuf;
+use jj_lib::{backend::CommitId, object_id::ObjectId};
 use ratatui::widgets::ListState;
 
 use crate::tui::{
@@ -18,7 +18,7 @@ pub struct AppState {
     pub screen_size: (u16, u16),
     pub list_state: ListState,
     pub show_unchanged: bool,
-    pub commit_list: Vec<RefNameBuf>,
+    pub commit_list: Vec<CommitId>,
     pub next_page: Option<Pagination>,
     pub base_index: usize,
     pub comparison_index: usize,
@@ -153,9 +153,9 @@ impl AppState {
                         let _ = self.worker_req_tx.send(WorkerMsg {
                             job_id,
                             msg: WorkerRequest::CalculateBranchDiff {
-                                from: self.commit_list[from].as_str().to_string(),
+                                from: self.commit_list[from].clone(),
                                 from_index: from,
-                                to: self.commit_list[to].as_str().to_string(),
+                                to: self.commit_list[to].clone(),
                                 to_index: to,
                             },
                         });
@@ -187,13 +187,13 @@ impl AppState {
                     base_name: self
                         .commit_list
                         .get(from)
-                        .map(|c| c.clone().into_string())
+                        .map(|c| c.hex())
                         .unwrap_or_default(),
                     base_index: from,
                     comparison_name: self
                         .commit_list
                         .get(to)
-                        .map(|c| c.clone().into_string())
+                        .map(|c| c.hex())
                         .unwrap_or_default(),
                     comparison_index: to,
                     total_commits: self.commit_list.len(),

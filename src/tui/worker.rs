@@ -12,7 +12,7 @@ use diffsoup::{
 };
 use error_stack::ResultExt;
 use jj_lib::{
-    ref_name::RefNameBuf,
+    backend::CommitId,
     repo::{ReadonlyRepo, Repo},
     workspace::Workspace,
 };
@@ -31,14 +31,14 @@ pub enum WorkerRequest {
         pagination: Option<Pagination>,
     },
     CalculateBranchDiff {
-        from: String,
+        from: CommitId,
         from_index: usize,
-        to: String,
+        to: CommitId,
         to_index: usize,
     },
     RenderInterdiff {
-        from: Option<String>,
-        to: Option<String>,
+        from: Option<CommitId>,
+        to: Option<CommitId>,
         render_width: u16,
         scroll: u16,
     },
@@ -59,7 +59,7 @@ pub enum WorkerResponse {
         scroll: u16,
     },
     LoadCommits {
-        page: Page<RefNameBuf>,
+        page: Page<CommitId>,
     },
 }
 
@@ -130,8 +130,8 @@ pub fn spawn_worker_thread(
 }
 
 pub fn render_interdiff(
-    from_sha: &Option<String>,
-    to_sha: &Option<String>,
+    from_sha: &Option<CommitId>,
+    to_sha: &Option<CommitId>,
     workspace: &Workspace,
     repo: &impl Repo,
     render_width: u16,
@@ -139,12 +139,12 @@ pub fn render_interdiff(
 ) -> WorkerResponse {
     let from_commit = from_sha
         .as_ref()
-        .map(|sha| get_commit(sha, workspace, repo))
+        .map(|sha| get_commit(sha, repo))
         .transpose()
         .unwrap_or(None);
     let to_commit = to_sha
         .as_ref()
-        .map(|sha| get_commit(sha, workspace, repo))
+        .map(|sha| get_commit(sha, repo))
         .transpose()
         .unwrap_or(None);
 

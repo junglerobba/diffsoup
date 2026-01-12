@@ -1,5 +1,5 @@
 use error_stack::ResultExt;
-use jj_lib::ref_name::RefNameBuf;
+use jj_lib::backend::CommitId;
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::Deserialize;
 use url::Url;
@@ -70,8 +70,10 @@ struct PrActivity {
     values: Vec<PrActivityEntry>,
 }
 
-impl From<PrActivity> for Page<RefNameBuf> {
-    fn from(value: PrActivity) -> Self {
+impl TryFrom<PrActivity> for Page<CommitId> {
+    type Error = error_stack::Report<CustomError>;
+
+    fn try_from(value: PrActivity) -> Result<Self> {
         let actions = value.values.iter().filter_map(|v| match v {
             PrActivityEntry::Rescoped(action) => Some(action),
             _ => None,
@@ -81,12 +83,18 @@ impl From<PrActivity> for Page<RefNameBuf> {
 
         for (i, action) in actions.rev().enumerate() {
             if value.is_last_page && i == 0 {
-                commits.push(RefNameBuf::from(&action.previous_from_hash));
+                let commit_id = CommitId::try_from_hex(&action.previous_from_hash).ok_or(
+                    CustomError::CommitError("invalid commit hash from bitbucket".into()),
+                )?;
+
+                commits.push(commit_id);
             }
-            commits.push(RefNameBuf::from(&action.from_hash));
+            commits.push(CommitId::try_from_hex(&action.from_hash).ok_or(
+                CustomError::CommitError("invalid commit hash from bitbucket".into()),
+            )?);
         }
 
-        Self {
+        Ok(Self {
             items: commits,
             next: (!value.is_last_page).then_some(Pagination::Offset(OffsetPagination {
                 offset: (value.start as usize) + value.limit.unwrap_or(value.values.len()),
@@ -94,7 +102,7 @@ impl From<PrActivity> for Page<RefNameBuf> {
                 direction: PageDirection::Backward,
             })),
             direction: PageDirection::Backward,
-        }
+        })
     }
 }
 
@@ -116,7 +124,7 @@ struct PrRescopeAction {
 }
 
 impl PrFetcher for BitbucketFetcher {
-    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<RefNameBuf>> {
+    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<CommitId>> {
         let (offset, limit) = match pagination {
             None => (0, None),
             Some(Pagination::Offset(pagination)) => (pagination.offset, pagination.limit),
@@ -144,6 +152,6 @@ impl PrFetcher for BitbucketFetcher {
             .change_context(CustomError::RequestError)?
             .json()
             .change_context(CustomError::RequestError)?;
-        Ok(res.into())
+        res.try_into()
     }
 }

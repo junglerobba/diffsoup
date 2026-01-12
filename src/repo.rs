@@ -11,7 +11,6 @@ use jj_lib::{
     git_backend::GitBackend,
     local_working_copy::{LocalWorkingCopy, LocalWorkingCopyFactory},
     object_id::ObjectId,
-    ref_name::RefNameBuf,
     repo::{ReadonlyRepo, Repo, StoreFactories},
     settings::UserSettings,
     workspace::{
@@ -154,9 +153,9 @@ fn get_trunk_alias(repo: &gix::Repository) -> Result<Option<String>> {
     Ok(None)
 }
 
-pub fn ensure_commits_exist<'a, I>(shas: I, repo: &impl Repo) -> Result<Vec<&'a str>>
+pub fn ensure_commits_exist<'a, I>(shas: I, repo: &impl Repo) -> Result<Vec<&'a CommitId>>
 where
-    I: Iterator<Item = &'a RefNameBuf>,
+    I: Iterator<Item = &'a CommitId>,
 {
     let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
         return Err(CustomError::CommitError("not backed by a git repo".to_string()).into());
@@ -164,24 +163,20 @@ where
     let git_repo = git_backend.git_repo();
     let missing = shas
         .map(|sha| {
-            let commit_id = CommitId::try_from_hex(sha.as_str()).ok_or(CustomError::RepoError)?;
-            let object_id = gix::ObjectId::try_from(commit_id.as_bytes())
-                .change_context(CustomError::RepoError)?;
-            Ok(git_repo
-                .find_commit(object_id)
-                .is_err()
-                .then_some(sha.as_str()))
+            let object_id =
+                gix::ObjectId::try_from(sha.as_bytes()).change_context(CustomError::RepoError)?;
+            Ok(git_repo.find_commit(object_id).is_err().then_some(sha))
         })
         .collect::<Result<Vec<_>>>()?
         .into_iter()
         .flatten()
-        .collect::<Vec<&str>>();
+        .collect::<Vec<&CommitId>>();
     Ok(missing)
 }
 
 pub fn fetch_commits<'a, I>(commits: I, repo: Arc<ReadonlyRepo>) -> Result<Arc<ReadonlyRepo>>
 where
-    I: Iterator<Item = &'a str>,
+    I: Iterator<Item = &'a CommitId>,
 {
     let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
         return Err(CustomError::CommitError("not backed by a git repo".to_string()).into());
