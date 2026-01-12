@@ -161,16 +161,17 @@ where
         return Err(CustomError::CommitError("not backed by a git repo".to_string()).into());
     };
     let git_repo = git_backend.git_repo();
-    let missing = shas
-        .map(|sha| {
-            let object_id =
-                gix::ObjectId::try_from(sha.as_bytes()).change_context(CustomError::RepoError)?;
-            Ok(git_repo.find_commit(object_id).is_err().then_some(sha))
+
+    let missing: Vec<&CommitId> = shas
+        .filter_map(|sha| {
+            let object_id = gix::ObjectId::try_from(sha.as_bytes()).ok()?;
+            let git_has_commit = git_repo.find_commit(object_id).is_ok();
+
+            let jj_has_commit = repo.index().has_id(sha).ok()?;
+
+            (!git_has_commit || !jj_has_commit).then_some(sha)
         })
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .flatten()
-        .collect::<Vec<&CommitId>>();
+        .collect();
     Ok(missing)
 }
 
