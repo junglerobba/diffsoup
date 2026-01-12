@@ -167,17 +167,17 @@ pub enum StoreSearchResult<'a> {
 
 pub fn ensure_commits_exist<'a, I>(shas: I, repo: &impl Repo) -> Result<Vec<StoreSearchResult<'a>>>
 where
-    I: Iterator<Item = &'a CommitId>,
+    I: IntoIterator<Item = &'a CommitId>,
 {
     let missing: Vec<StoreSearchResult> = shas
+        .into_iter()
         .filter_map(|sha| {
             let commit = match repo.store().get_commit(sha) {
                 Ok(commit) => commit,
                 Err(_) => return Some(StoreSearchResult::Fetch(sha)),
             };
 
-            let jj_has_commit = repo.index().has_id(sha).ok()?;
-
+            let jj_has_commit = repo.index().has_id(sha).is_ok_and(|value| value);
             if !jj_has_commit {
                 return Some(StoreSearchResult::Import(commit));
             }

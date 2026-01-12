@@ -77,7 +77,7 @@ pub fn spawn_worker_thread(
                 WorkerRequest::LoadCommits { pagination } => {
                     match pr_fetcher.fetch_history(pagination.as_ref()) {
                         Ok(page) => {
-                            let missing = ensure_commits_exist(page.items.iter(), repo.as_ref())?;
+                            let missing = ensure_commits_exist(&page.items, repo.as_ref())?;
                             if !missing.is_empty() {
                                 worker_response_tx
                                     .send(WorkerMsg {
