@@ -6,6 +6,7 @@ use jj_cli::{
 };
 use jj_lib::{
     backend::CommitId,
+    commit::Commit,
     config::{ConfigLayer, ConfigSource},
     git::{self, GitRefKind, GitSettings, parse_git_ref},
     git_backend::GitBackend,
@@ -175,10 +176,7 @@ where
     Ok(missing)
 }
 
-pub fn fetch_commits<'a, I>(commits: I, repo: Arc<ReadonlyRepo>) -> Result<Arc<ReadonlyRepo>>
-where
-    I: Iterator<Item = &'a CommitId>,
-{
+pub fn fetch_commits(commits: &[&CommitId], repo: Arc<ReadonlyRepo>) -> Result<Arc<ReadonlyRepo>> {
     let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
         return Err(CustomError::CommitError("not backed by a git repo".to_string()).into());
     };
@@ -192,11 +190,7 @@ where
             "No default remote configured".to_string(),
         ))?;
 
-    let remote_name = remote.name().map(|n| n.as_ref()).unwrap_or("origin".into());
-    let refspecs: Vec<String> = commits
-        .map(|sha| format!("{}:refs/remotes/{}/{}", sha, remote_name, sha))
-        .collect();
-
+    let refspecs: Vec<String> = commits.iter().map(|c| format!("{}", c)).collect();
     let remote = remote
         .with_refspecs(
             refspecs.iter().map(|s| s.as_str()),
@@ -215,11 +209,26 @@ where
         .receive(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
         .change_context(CustomError::RequestError)?;
 
-    // import the fetched refs into jj
-    let git_settings = git::GitSettings::from_settings(repo.settings())
-        .change_context(CustomError::ConfigError)?;
+    // import the fetched commits into jj
     let mut tx = repo.start_transaction();
-    git::import_refs(tx.repo_mut(), &git_settings).change_context(CustomError::RepoError)?;
+    git_backend
+        .import_head_commits(commits.iter().copied())
+        .change_context(CustomError::RepoError)?;
+
+    let store = tx.repo_mut().store();
+    let commits: Vec<Commit> = commits
+        .iter()
+        .map(|id| store.get_commit(id).change_context(CustomError::RepoError))
+        .collect::<Result<Vec<_>>>()?;
+
+    tx.repo_mut()
+        .add_heads(&commits)
+        .change_context(CustomError::RepoError)?;
+
+    for commit in &commits {
+        tx.repo_mut().remove_head(commit.id());
+    }
+
     let updated_repo = tx
         .commit("import fetched commits")
         .change_context(CustomError::RepoError)?;

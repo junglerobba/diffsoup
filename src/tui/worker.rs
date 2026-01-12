@@ -90,7 +90,7 @@ pub fn spawn_worker_thread(
                                     .change_context(CustomError::ProcessError(
                                         "worker: error sending response".to_string(),
                                     ))?;
-                                repo = fetch_commits(missing.into_iter(), repo)?;
+                                repo = fetch_commits(&missing, repo)?;
                             };
                             WorkerResponse::LoadCommits { page }
                         }
