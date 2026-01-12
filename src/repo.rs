@@ -11,7 +11,6 @@ use jj_lib::{
     git::{self, GitRefKind, GitSettings, parse_git_ref},
     git_backend::GitBackend,
     local_working_copy::{LocalWorkingCopy, LocalWorkingCopyFactory},
-    object_id::ObjectId,
     repo::{ReadonlyRepo, Repo, StoreFactories},
     settings::UserSettings,
     workspace::{
@@ -154,71 +153,96 @@ fn get_trunk_alias(repo: &gix::Repository) -> Result<Option<String>> {
     Ok(None)
 }
 
-pub fn ensure_commits_exist<'a, I>(shas: I, repo: &impl Repo) -> Result<Vec<&'a CommitId>>
+#[derive(Debug)]
+pub enum StoreSearchResult<'a> {
+    Fetch(&'a CommitId),
+    Import(Commit),
+}
+
+pub fn ensure_commits_exist<'a, I>(shas: I, repo: &impl Repo) -> Result<Vec<StoreSearchResult<'a>>>
 where
     I: Iterator<Item = &'a CommitId>,
 {
-    let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
-        return Err(CustomError::CommitError("not backed by a git repo".to_string()).into());
-    };
-    let git_repo = git_backend.git_repo();
-
-    let missing: Vec<&CommitId> = shas
+    let missing: Vec<StoreSearchResult> = shas
         .filter_map(|sha| {
-            let object_id = gix::ObjectId::try_from(sha.as_bytes()).ok()?;
-            let git_has_commit = git_repo.find_commit(object_id).is_ok();
+            let commit = match repo.store().get_commit(sha) {
+                Ok(commit) => commit,
+                Err(_) => return Some(StoreSearchResult::Fetch(sha)),
+            };
 
             let jj_has_commit = repo.index().has_id(sha).ok()?;
 
-            (!git_has_commit || !jj_has_commit).then_some(sha)
+            if !jj_has_commit {
+                return Some(StoreSearchResult::Import(commit));
+            }
+
+            None
         })
         .collect();
     Ok(missing)
 }
 
-pub fn fetch_commits(commits: &[&CommitId], repo: Arc<ReadonlyRepo>) -> Result<Arc<ReadonlyRepo>> {
-    let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
-        return Err(CustomError::CommitError("not backed by a git repo".to_string()).into());
-    };
-    let git_repo = git_backend.git_repo();
+pub fn fetch_commits(
+    commits: &[StoreSearchResult],
+    repo: Arc<ReadonlyRepo>,
+) -> Result<Arc<ReadonlyRepo>> {
+    let to_fetch: Vec<&CommitId> = commits
+        .iter()
+        .filter_map(|c| match c {
+            StoreSearchResult::Fetch(id) => Some(*id),
+            StoreSearchResult::Import(_) => None,
+        })
+        .collect();
 
-    let remote = git_repo
-        .find_default_remote(gix::remote::Direction::Fetch)
-        .transpose()
-        .change_context(CustomError::RepoError)?
-        .ok_or(CustomError::CommitError(
-            "No default remote configured".to_string(),
-        ))?;
+    if !to_fetch.is_empty() {
+        let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
+            return Err(CustomError::CommitError("not backed by a git repo".to_string()).into());
+        };
+        let git_repo = git_backend.git_repo();
 
-    let refspecs: Vec<String> = commits.iter().map(|c| format!("{}", c)).collect();
-    let remote = remote
-        .with_refspecs(
-            refspecs.iter().map(|s| s.as_str()),
-            gix::remote::Direction::Fetch,
-        )
-        .change_context(CustomError::RepoError)?;
-    let connection = remote
-        .connect(gix::remote::Direction::Fetch)
-        .change_context(CustomError::RequestError)?;
-    connection
-        .prepare_fetch(
-            gix::progress::Discard,
-            gix::remote::ref_map::Options::default(),
-        )
-        .change_context(CustomError::RequestError)?
-        .receive(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
-        .change_context(CustomError::RequestError)?;
+        let remote = git_repo
+            .find_default_remote(gix::remote::Direction::Fetch)
+            .transpose()
+            .change_context(CustomError::RepoError)?
+            .ok_or(CustomError::CommitError(
+                "No default remote configured".to_string(),
+            ))?;
 
-    // import the fetched commits into jj
+        let refspecs: Vec<String> = to_fetch.iter().map(|c| format!("{}", c)).collect();
+        let remote = remote
+            .with_refspecs(
+                refspecs.iter().map(|s| s.as_str()),
+                gix::remote::Direction::Fetch,
+            )
+            .change_context(CustomError::RepoError)?;
+        let connection = remote
+            .connect(gix::remote::Direction::Fetch)
+            .change_context(CustomError::RequestError)?;
+        connection
+            .prepare_fetch(
+                gix::progress::Discard,
+                gix::remote::ref_map::Options::default(),
+            )
+            .change_context(CustomError::RequestError)?
+            .receive(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+            .change_context(CustomError::RequestError)?;
+
+        git_backend
+            .import_head_commits(to_fetch.iter().copied())
+            .change_context(CustomError::RepoError)?;
+    }
+
     let mut tx = repo.start_transaction();
-    git_backend
-        .import_head_commits(commits.iter().copied())
-        .change_context(CustomError::RepoError)?;
 
     let store = tx.repo_mut().store();
     let commits: Vec<Commit> = commits
         .iter()
-        .map(|id| store.get_commit(id).change_context(CustomError::RepoError))
+        .map(|result| match result {
+            StoreSearchResult::Fetch(id) => {
+                store.get_commit(id).change_context(CustomError::RepoError)
+            }
+            StoreSearchResult::Import(commit) => Ok(commit.clone()),
+        })
         .collect::<Result<Vec<_>>>()?;
 
     tx.repo_mut()
