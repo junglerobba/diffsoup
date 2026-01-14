@@ -1,5 +1,6 @@
 mod bitbucket;
 mod github;
+mod gitlab;
 mod none;
 
 use error_stack::ResultExt;
@@ -8,7 +9,9 @@ use std::fmt::Debug;
 
 use crate::{
     error::{CustomError, Result},
-    pr::{bitbucket::BitbucketFetcher, github::GithubFetcher, none::NoFetcher},
+    pr::{
+        bitbucket::BitbucketFetcher, github::GithubFetcher, gitlab::GitlabFetcher, none::NoFetcher,
+    },
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -83,6 +86,12 @@ pub fn get_pr_fetcher(
                     println!("WARNING: BITBUCKET_TOKEN is not set, authentication might fail!");
                 }
                 Ok(Some(Box::new(BitbucketFetcher::new(&parsed, token)?)))
+            } else if host.contains("gitlab") {
+                let token = std::env::var("GITLAB_TOKEN").ok();
+                if token.is_none() {
+                    println!("WARNING: GITLAB_TOKEN is not set, authentication might fail!");
+                }
+                Ok(Some(Box::new(GitlabFetcher::new(&parsed, token)?)))
             } else {
                 Ok(None)
             }
