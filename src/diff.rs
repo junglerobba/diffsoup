@@ -3,6 +3,7 @@ use crate::{
     trees::DiffTree,
 };
 use error_stack::ResultExt;
+use gix::bstr::ByteSlice;
 use jj_cli::{
     diff_util::{self, DiffFormat, DiffRenderer, DiffStatOptions, UnifiedDiffOptions},
     formatter::ColorFormatter,
@@ -338,7 +339,5 @@ pub fn render_interdiff(
     ))?;
 
     drop(formatter);
-    String::from_utf8(diff).change_context(CustomError::ProcessError(
-        "failed to parse diff output as UTF-8".to_owned(),
-    ))
+    Ok(diff.to_str_lossy().to_string())
 }
