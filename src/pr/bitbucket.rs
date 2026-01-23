@@ -13,8 +13,7 @@ use crate::{
 pub struct BitbucketFetcher {
     client: reqwest::blocking::Client,
     host: String,
-    project: String,
-    repo: String,
+    repo_path: String,
     pr_id: String,
 }
 
@@ -50,8 +49,13 @@ impl BitbucketFetcher {
             ] => Ok(Self {
                 client,
                 host: host.to_string(),
-                project: project.to_string(),
-                repo: repo.to_string(),
+                repo_path: format!("projects/{project}/repos/{repo}"),
+                pr_id: pr_id.to_string(),
+            }),
+            ["users", user, "repos", repo, "pull-requests", pr_id, ..] => Ok(Self {
+                client,
+                host: host.to_string(),
+                repo_path: format!("users/{user}/repos/{repo}"),
                 pr_id: pr_id.to_string(),
             }),
             _ => Err(CustomError::UrlError.into()),
@@ -138,10 +142,9 @@ impl PrFetcher for BitbucketFetcher {
         let res: PrActivity = self
             .client
             .get(format!(
-                "{}/rest/api/latest/projects/{}/repos/{}/pull-requests/{}/activities?start={}{}",
+                "{}/rest/api/latest/{}/pull-requests/{}/activities?start={}{}",
                 self.host,
-                self.project,
-                self.repo,
+                self.repo_path,
                 self.pr_id,
                 offset,
                 limit
