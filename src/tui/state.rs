@@ -177,12 +177,16 @@ impl AppState {
             WorkerResponse::CalculateBranchDiff { commits, from, to } => {
                 self.base_index = from;
                 self.comparison_index = to;
-                let selected = std::cmp::min(
-                    commits.len(),
-                    self.list_state.selected().unwrap_or_default(),
-                );
+                let selected = if commits.is_empty() {
+                    None
+                } else {
+                    Some(std::cmp::min(
+                        commits.len() - 1,
+                        self.list_state.selected().unwrap_or_default(),
+                    ))
+                };
                 self.screen = AppScreen::List(ListView {
-                    list_state: self.list_state.clone().with_selected(Some(selected)),
+                    list_state: self.list_state.clone().with_selected(selected),
                     show_unchanged: self.show_unchanged,
                     base_name: self
                         .commit_list

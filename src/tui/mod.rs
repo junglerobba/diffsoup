@@ -96,13 +96,14 @@ pub fn run(
                 UiEvent::Scroll(event) => match &mut app.screen {
                     AppScreen::List(list_view) => {
                         let current = list_view.list_state.selected().unwrap_or_default();
-                        let new = event.get_new_index(
-                            app.screen_size,
-                            current,
-                            list_view.get_visible_commits().len(),
-                        );
-                        app.list_state.select(Some(new));
-                        list_view.list_state.select(Some(new));
+                        let commits = list_view.get_visible_commits();
+                        let new = if commits.is_empty() {
+                            None
+                        } else {
+                            Some(event.get_new_index(app.screen_size, current, commits.len() - 1))
+                        };
+                        app.list_state.select(new);
+                        list_view.list_state.select(new);
                     }
                     AppScreen::DiffView(diff_view) => {
                         diff_view.scroll = event
