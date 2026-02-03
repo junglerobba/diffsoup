@@ -8,13 +8,18 @@
   outputs =
     {
       flakelight,
+      self,
       ...
     }:
     flakelight ./. (
       { lib, ... }:
       {
         systems = lib.systems.flakeExposed;
-        package = import ./default.nix;
+        package =
+          pkgs:
+          pkgs.callPackage ./default.nix {
+            shortRev = self.shortRev or "dirty";
+          };
         devShell = import ./shell.nix;
       }
     );
