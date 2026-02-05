@@ -3,6 +3,7 @@ use error_stack::ResultExt;
 use jj_cli::{
     cli_util::{find_workspace_dir, start_repo_transaction},
     config::{ConfigEnv, config_from_environment, default_config_layers},
+    ui::Ui,
 };
 use jj_lib::{
     backend::CommitId,
@@ -51,12 +52,12 @@ fn load_jj_repo(path: &Path) -> Result<Workspace> {
         .change_context(CustomError::RepoError)?;
     config_env.reset_repo_path(loader.repo_path());
     config_env
-        .reload_repo_config(&mut raw_config)
-        .change_context(CustomError::ConfigError)?;
+        .reload_repo_config(&Ui::null(), &mut raw_config)
+        .map_err(CustomError::from)?;
     config_env.reset_workspace_path(loader.workspace_root());
     config_env
-        .reload_workspace_config(&mut raw_config)
-        .change_context(CustomError::ConfigError)?;
+        .reload_workspace_config(&Ui::null(), &mut raw_config)
+        .map_err(CustomError::from)?;
     let config = config_env
         .resolve_config(&raw_config)
         .change_context(CustomError::RepoError)?;
@@ -103,12 +104,12 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
     let mut config_env = ConfigEnv::from_environment();
     config_env.reset_repo_path(&repo_path);
     config_env
-        .reload_repo_config(&mut raw_config)
-        .change_context(CustomError::ConfigError)?;
+        .reload_repo_config(&Ui::null(), &mut raw_config)
+        .map_err(CustomError::from)?;
     config_env.reset_workspace_path(workspace_root.path());
     config_env
-        .reload_workspace_config(&mut raw_config)
-        .change_context(CustomError::ConfigError)?;
+        .reload_workspace_config(&Ui::null(), &mut raw_config)
+        .map_err(CustomError::from)?;
     let config = config_env
         .resolve_config(&raw_config)
         .change_context(CustomError::RepoError)?;

@@ -11,7 +11,7 @@ use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
@@ -328,7 +328,7 @@ fn render_list(
         .highlight_style(Style::default().reversed().add_modifier(Modifier::BOLD));
 
     // Clone ListState for rendering (cheap, just a couple usizes)
-    let mut list_state = list_view.list_state.clone();
+    let mut list_state = list_view.list_state;
     f.render_stateful_widget(list, area, &mut list_state);
 }
 

@@ -187,7 +187,7 @@ impl AppState {
                     ))
                 };
                 self.screen = AppScreen::List(ListView {
-                    list_state: self.list_state.clone().with_selected(selected),
+                    list_state: self.list_state.with_selected(selected),
                     show_unchanged: self.show_unchanged,
                     base_name: self
                         .commit_list

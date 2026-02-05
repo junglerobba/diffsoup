@@ -1,4 +1,5 @@
 use error_stack::Report;
+use jj_cli::command_error::CommandError;
 use std::{error::Error, fmt::Display};
 
 pub type Result<T> = core::result::Result<T, Report<CustomError>>;
@@ -27,5 +28,11 @@ impl Display for CustomError {
             Self::CommitError(msg) => write!(f, "Commit Error: {msg}"),
             Self::ProcessError(msg) => write!(f, "Process error: {msg}"),
         }
+    }
+}
+
+impl From<CommandError> for CustomError {
+    fn from(value: CommandError) -> Self {
+        CustomError::ProcessError(format!("{:#?}", value))
     }
 }
