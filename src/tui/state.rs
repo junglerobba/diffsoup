@@ -86,6 +86,7 @@ pub enum ScrollDirection {
 pub enum ScrollEvent {
     Top,
     Single(ScrollDirection),
+    #[allow(unused)]
     Multi((ScrollDirection, u16)),
     HalfPage(ScrollDirection),
     FullPage(ScrollDirection),

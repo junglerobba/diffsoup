@@ -76,6 +76,7 @@ fn handle_event(event: &KeyEvent, screen: &AppScreen) -> Option<UiEvent> {
     }
 
     // Global bindings (work in all screens)
+    #[allow(clippy::single_match)]
     match (event.code, event.modifiers) {
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
             return Some(UiEvent::Exit);
