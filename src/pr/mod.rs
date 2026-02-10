@@ -1,5 +1,6 @@
 mod bitbucket;
 mod github;
+mod gitlab;
 mod none;
 
 use error_stack::ResultExt;
@@ -83,6 +84,12 @@ pub fn get_pr_fetcher(
                     println!("WARNING: BITBUCKET_TOKEN is not set, authentication might fail!");
                 }
                 Ok(Some(Box::new(BitbucketFetcher::new(&parsed, token)?)))
+            } else if host.contains("gitlab") {
+                let token = std::env::var("GITLAB_TOKEN").ok();
+                if token.is_none() {
+                    println!("WARNING: GITLAB_TOKEN is not set, authentication might fail!");
+                }
+                Ok(Some(Box::new(gitlab::GitlabFetcher::new(&parsed, token)?)))
             } else {
                 Ok(None)
             }
