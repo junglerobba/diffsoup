@@ -27,7 +27,12 @@ use jj_lib::{
     rewrite::rebase_to_dest_parent,
     workspace::Workspace,
 };
-use std::{collections::HashMap, fs::canonicalize, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fs::canonicalize,
+    path::PathBuf,
+    sync::Arc,
+};
 
 #[derive(Debug, Clone)]
 pub struct CommitDiff {
@@ -177,45 +182,54 @@ pub fn calculate_branch_diff(
         .iter()
         .map(|c| DiffSource::from_commit(c, repo))
         .collect::<Result<Vec<_>>>()?;
+    let to_index: HashMap<_, _> = to_sources
+        .iter()
+        .enumerate()
+        .map(|(i, source)| (source, i))
+        .collect();
 
     let mut from_map = HashMap::new();
     let mut to_map = HashMap::new();
+    let mut seen = HashSet::new();
     let mut change_ids = Vec::new();
 
     let mut from_idx = 0;
     let mut to_idx = 0;
 
     while from_idx < from_sources.len() || to_idx < to_sources.len() {
-        match (from_sources.get(from_idx), to_sources.get(to_idx)) {
+        let change_id = match (from_sources.get(from_idx), to_sources.get(to_idx)) {
             (Some(from_source), Some(to_source)) => {
                 if from_source == to_source {
-                    from_map.insert(from_source.clone(), &from_commits[from_idx]);
-                    to_map.insert(to_source.clone(), &to_commits[to_idx]);
-                    change_ids.push(from_source);
+                    from_map.insert(from_source, &from_commits[from_idx]);
+                    to_map.insert(to_source, &to_commits[to_idx]);
 
                     from_idx += 1;
                     to_idx += 1;
-                } else if from_sources[from_idx..].contains(to_source) {
-                    from_map.insert(from_source.clone(), &from_commits[from_idx]);
-                    change_ids.push(from_source);
-                    from_idx += 1;
-                } else {
-                    to_map.insert(to_source.clone(), &to_commits[to_idx]);
-                    change_ids.push(to_source);
+                    from_source
+                } else if to_index.get(from_source).is_some_and(|idx| *idx >= to_idx) {
+                    to_map.insert(to_source, &to_commits[to_idx]);
                     to_idx += 1;
+                    to_source
+                } else {
+                    from_map.insert(from_source, &from_commits[from_idx]);
+                    from_idx += 1;
+                    from_source
                 }
             }
             (Some(from_source), None) => {
-                from_map.insert(from_source.clone(), &from_commits[from_idx]);
-                change_ids.push(from_source);
+                from_map.insert(from_source, &from_commits[from_idx]);
                 from_idx += 1;
+                from_source
             }
             (None, Some(to_source)) => {
-                to_map.insert(to_source.clone(), &to_commits[to_idx]);
-                change_ids.push(to_source);
+                to_map.insert(to_source, &to_commits[to_idx]);
                 to_idx += 1;
+                to_source
             }
             (None, None) => unreachable!(),
+        };
+        if seen.insert(change_id) {
+            change_ids.push(change_id);
         }
     }
 
