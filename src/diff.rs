@@ -3,11 +3,12 @@ use crate::{
     trees::DiffTree,
 };
 use error_stack::ResultExt;
+use futures::executor::block_on;
 use gix::bstr::ByteSlice;
 use jj_cli::{
+    cli_util::load_revset_aliases,
     diff_util::{self, DiffFormat, DiffRenderer, DiffStatOptions, UnifiedDiffOptions},
     formatter::ColorFormatter,
-    revset_util,
     ui::Ui,
 };
 use jj_lib::{
@@ -15,6 +16,7 @@ use jj_lib::{
     commit::Commit,
     conflicts::ConflictMarkerStyle,
     copies::CopyRecords,
+    dsl_util::AliasesMap,
     git_backend::GitBackend,
     object_id::ObjectId,
     repo::Repo,
@@ -129,6 +131,7 @@ fn parse_revset_expr(
         user_email: "",
         date_pattern_context: chrono::Utc::now().fixed_offset().into(),
         default_ignored_remote: None,
+        fileset_aliases_map: &AliasesMap::default(),
         use_glob_by_default: false,
         extensions: &RevsetExtensions::default(),
         workspace: Some(RevsetWorkspaceContext {
@@ -153,7 +156,7 @@ pub fn calculate_branch_diff(
     workspace: &Workspace,
     repo: &impl Repo,
 ) -> Result<Vec<CommitDiff>> {
-    let aliases_map = &revset_util::load_revset_aliases(&Ui::null(), workspace.settings().config())
+    let aliases_map = &load_revset_aliases(&Ui::null(), workspace.settings().config())
         .map_err(|_| CustomError::RepoError)?;
     let trunk = parse_revset_expr("trunk()", workspace, repo, aliases_map)?;
 
@@ -269,7 +272,7 @@ pub fn calculate_branch_diff(
 }
 
 fn calculate_diff_stats(from: &Commit, to: &Commit, repo: &impl Repo) -> Result<DiffStats> {
-    let from_tree = rebase_to_dest_parent(repo, std::slice::from_ref(from), to)
+    let from_tree = block_on(rebase_to_dest_parent(repo, std::slice::from_ref(from), to))
         .change_context(CustomError::RepoError)?;
     let to_tree = to.tree();
 
@@ -279,7 +282,7 @@ fn calculate_diff_stats(from: &Commit, to: &Commit, repo: &impl Repo) -> Result<
 
     let diff_stat_options = DiffStatOptions::default();
 
-    let stats = futures::executor::block_on(diff_util::DiffStats::calculate(
+    let stats = block_on(diff_util::DiffStats::calculate(
         repo.store(),
         diff_stream,
         &diff_stat_options,
@@ -297,12 +300,9 @@ fn calculate_diff_stats(from: &Commit, to: &Commit, repo: &impl Repo) -> Result<
 }
 
 fn calculate_commit_stats(commit: &Commit, repo: &impl Repo) -> Result<DiffStats> {
-    let parents: Vec<Commit> = commit
-        .parents()
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .change_context(CustomError::CommitError(
-            "failed to get commit parents".to_string(),
-        ))?;
+    let parents = block_on(commit.parents()).change_context(CustomError::CommitError(
+        "failed to get commit parents".to_string(),
+    ))?;
 
     if parents.is_empty() {
         return Ok(DiffStats::default());
@@ -340,7 +340,7 @@ pub fn render_interdiff(
     let copy_records = CopyRecords::default();
     let mut diff = Vec::new();
     let mut formatter = ColorFormatter::new(&mut diff, Vec::new().into(), false);
-    futures::executor::block_on(renderer.show_diff(
+    block_on(renderer.show_diff(
         &Ui::null(),
         &mut formatter,
         jj_lib::merge::Diff::new(&from_tree, &to_tree),

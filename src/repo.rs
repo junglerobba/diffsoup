@@ -1,5 +1,6 @@
 use crate::error::{CustomError, Result};
 use error_stack::ResultExt;
+use futures::executor::block_on;
 use jj_cli::{
     cli_util::{find_workspace_dir, start_repo_transaction},
     config::{ConfigEnv, config_from_environment, default_config_layers},
@@ -33,10 +34,8 @@ pub fn open(path: &Path) -> Result<RepoHandle> {
         return init_jj_repo(path);
     };
     let workspace = load_jj_repo(path)?;
-    let repo = workspace
-        .repo_loader()
-        .load_at_head()
-        .change_context(CustomError::RepoError)?;
+    let repo =
+        block_on(workspace.repo_loader().load_at_head()).change_context(CustomError::RepoError)?;
     Ok(RepoHandle {
         repo,
         workspace,
@@ -115,10 +114,13 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
         .change_context(CustomError::RepoError)?;
     let settings = UserSettings::from_config(config).change_context(CustomError::RepoError)?;
 
-    let (workspace, repo) =
-        Workspace::init_external_git(&settings, workspace_root.path(), git_repo.path())
-            .change_context(CustomError::RepoError)
-            .attach("could not initialize jj repo")?;
+    let (workspace, repo) = block_on(Workspace::init_external_git(
+        &settings,
+        workspace_root.path(),
+        git_repo.path(),
+    ))
+    .change_context(CustomError::RepoError)
+    .attach("could not initialize jj repo")?;
 
     let mut tx = start_repo_transaction(&repo, &[]);
     git::import_refs(
@@ -131,9 +133,7 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
     )
     .change_context(CustomError::RepoError)?;
 
-    let repo = tx
-        .commit("import git refs")
-        .change_context(CustomError::RepoError)?;
+    let repo = block_on(tx.commit("import git refs")).change_context(CustomError::RepoError)?;
 
     Ok(RepoHandle {
         workspace,
@@ -260,9 +260,8 @@ pub fn fetch_commits(
         tx.repo_mut().remove_head(commit.id());
     }
 
-    let updated_repo = tx
-        .commit("import fetched commits")
-        .change_context(CustomError::RepoError)?;
+    let updated_repo =
+        block_on(tx.commit("import fetched commits")).change_context(CustomError::RepoError)?;
 
     Ok(updated_repo)
 }

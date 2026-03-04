@@ -2,6 +2,7 @@ use std::{fmt::Display, path::Path};
 
 use crate::error::{CustomError, Result};
 use error_stack::ResultExt;
+use futures::executor::block_on;
 use jj_lib::{
     backend::{CopyId, TreeValue},
     commit::Commit,
@@ -52,11 +53,10 @@ fn write_virtual_tree(
     const COMMIT_DESCRIPTION_PATH: &str = ".__COMMIT_MESSAGE__";
     let path = RepoPathBuf::from_relative_path(Path::new(COMMIT_DESCRIPTION_PATH))
         .change_context(CustomError::RepoError)?;
-    let blob_id =
-        futures::executor::block_on(repo.store().write_file(&path, &mut description.as_bytes()))
-            .change_context(CustomError::ProcessError(
-                "failed to block on store write".to_string(),
-            ))?;
+    let blob_id = block_on(repo.store().write_file(&path, &mut description.as_bytes()))
+        .change_context(CustomError::ProcessError(
+            "failed to block on store write".to_string(),
+        ))?;
 
     let mut virtual_tree = MergedTreeBuilder::new(tree.clone());
     virtual_tree.set_or_remove(
@@ -67,16 +67,14 @@ fn write_virtual_tree(
             copy_id: CopyId::placeholder(),
         }),
     );
-    virtual_tree
-        .write_tree()
-        .change_context(CustomError::RepoError)
+    block_on(virtual_tree.write_tree()).change_context(CustomError::RepoError)
 }
 
 impl DiffTree<'_> {
     pub fn get_trees(&self, repo: &impl Repo) -> Result<(MergedTree, MergedTree)> {
         match self {
             Self::Interdiff { from, to } => {
-                let rebased = rebase_to_dest_parent(repo, std::slice::from_ref(from), to)
+                let rebased = block_on(rebase_to_dest_parent(repo, std::slice::from_ref(from), to))
                     .change_context(CustomError::RepoError)?;
                 let (from_tree, to_tree) = if from.description() == to.description() {
                     (rebased, to.tree())
@@ -90,18 +88,16 @@ impl DiffTree<'_> {
                 Ok((from_tree, to_tree))
             }
             Self::AddedCommit { commit } => {
-                let from_tree = commit
-                    .parent_tree(repo)
-                    .change_context(CustomError::RepoError)?;
+                let from_tree =
+                    block_on(commit.parent_tree(repo)).change_context(CustomError::RepoError)?;
                 let to_tree = write_virtual_tree(commit.description(), &commit.tree(), repo)?;
 
                 Ok((from_tree, to_tree))
             }
             Self::RemovedCommit { commit } => {
                 let from_tree = write_virtual_tree(commit.description(), &commit.tree(), repo)?;
-                let to_tree = commit
-                    .parent_tree(repo)
-                    .change_context(CustomError::RepoError)?;
+                let to_tree =
+                    block_on(commit.parent_tree(repo)).change_context(CustomError::RepoError)?;
 
                 Ok((from_tree, to_tree))
             }
