@@ -118,7 +118,7 @@ impl DiffSource {
     }
 }
 
-fn parse_revset_expr(
+pub fn parse_revset_expr(
     expr: &str,
     workspace: &Workspace,
     repo: &impl Repo,

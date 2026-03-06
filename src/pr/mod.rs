@@ -4,8 +4,8 @@ mod gitlab;
 mod none;
 
 use error_stack::ResultExt;
-use jj_lib::backend::CommitId;
-use std::fmt::Debug;
+use jj_lib::{backend::CommitId, repo::ReadonlyRepo, workspace::Workspace};
+use std::{fmt::Debug, sync::Arc};
 
 use crate::{
     error::{CustomError, Result},
@@ -65,9 +65,13 @@ pub fn get_pr_fetcher(
     url: Option<String>,
     from: Option<String>,
     to: Option<String>,
+    repo: Arc<ReadonlyRepo>,
+    workspace: &Workspace,
 ) -> Result<Option<Box<dyn PrFetcher>>> {
     match (url, from, to) {
-        (None, Some(from), Some(to)) => Ok(Some(Box::new(NoFetcher::new(&from, &to)))),
+        (None, Some(from), Some(to)) => {
+            Ok(Some(Box::new(NoFetcher::new(&from, &to, repo, workspace)?)))
+        }
         (Some(url), _, _) => {
             let parsed = url::Url::parse(&url).change_context(CustomError::UrlError)?;
             let host = parsed.host_str().ok_or(CustomError::UrlError)?;

@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = handle.workspace;
     let repo = handle.repo;
 
-    let pr = get_pr_fetcher(args.pr_url, args.from, args.to)?
+    let pr = get_pr_fetcher(args.pr_url, args.from, args.to, repo.clone(), &workspace)?
         .expect("either a PR URL or --from  and --to need to be provided");
 
     tui::run(workspace, repo, pr)?;
