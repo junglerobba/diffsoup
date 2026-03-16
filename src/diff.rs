@@ -157,19 +157,23 @@ pub fn parse_revset_expr(
 pub fn calculate_branch_diff(
     from_branch: &CommitId,
     to_branch: &CommitId,
+    target: Option<&CommitId>,
     workspace: &Workspace,
     repo: &impl Repo,
 ) -> Result<Vec<CommitDiff>> {
     let aliases_map = &load_revset_aliases(&Ui::null(), workspace.settings().config())
         .map_err(|_| CustomError::RepoError)?;
-    let trunk = parse_revset_expr("trunk()", workspace, repo, aliases_map)?;
+    let target = target.map_or_else(
+        || parse_revset_expr("trunk()", workspace, repo, aliases_map),
+        |id| Ok(RevsetExpression::commit(id.clone())),
+    )?;
 
     let from_branch = RevsetExpression::commit(from_branch.clone());
     let to_branch = RevsetExpression::commit(to_branch.clone());
     let fork_point_expr = Arc::new(RevsetExpression::ForkPoint(RevsetExpression::union_all(&[
         from_branch.clone(),
         to_branch.clone(),
-        trunk.clone(),
+        target.clone(),
     ])));
 
     let from_expr = fork_point_expr.range(&from_branch.clone());
@@ -177,7 +181,7 @@ pub fn calculate_branch_diff(
 
     let to_expr = Arc::new(RevsetExpression::Difference(
         to_branch.ancestors(),
-        trunk.ancestors(),
+        target.ancestors(),
     ));
     let to_commits = block_on(get_commits(to_expr, repo))?;
 

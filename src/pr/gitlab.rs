@@ -1,6 +1,6 @@
 use crate::{
     error::{CustomError, Result},
-    pr::{Page, PageDirection, Pagination, PrFetcher},
+    pr::{HistoryEntry, Page, PageDirection, Pagination, PrFetcher},
 };
 use error_stack::ResultExt;
 use jj_lib::backend::CommitId;
@@ -52,21 +52,35 @@ impl GitlabFetcher {
 #[derive(Debug, Deserialize)]
 struct MergeRequestVersion {
     head_commit_sha: String,
+    start_commit_sha: String,
 }
 
-impl TryFrom<Vec<MergeRequestVersion>> for Page<CommitId> {
+impl TryFrom<Vec<MergeRequestVersion>> for Page<HistoryEntry> {
     type Error = error_stack::Report<CustomError>;
 
     fn try_from(versions: Vec<MergeRequestVersion>) -> std::result::Result<Self, Self::Error> {
         let items = versions
             .iter()
             .map(|v| {
-                CommitId::try_from_hex(&v.head_commit_sha).ok_or(CustomError::CommitError(format!(
-                    "invalid commit hash {} from gitlab",
-                    v.head_commit_sha
-                )))
+                match (
+                    CommitId::try_from_hex(&v.head_commit_sha),
+                    CommitId::try_from_hex(&v.start_commit_sha),
+                ) {
+                    (Some(head), Some(start)) => Ok(HistoryEntry {
+                        head_ref: head,
+                        base_ref: Some(start),
+                    }),
+                    (Some(head), _) => Ok(HistoryEntry {
+                        head_ref: head,
+                        base_ref: None,
+                    }),
+                    (None, _) => Err(CustomError::CommitError(format!(
+                        "invalid commit hash {} from gitlab",
+                        v.start_commit_sha
+                    ))),
+                }
             })
-            .collect::<std::result::Result<Vec<CommitId>, _>>()?;
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok(Self {
             items,
@@ -77,7 +91,7 @@ impl TryFrom<Vec<MergeRequestVersion>> for Page<CommitId> {
 }
 
 impl PrFetcher for GitlabFetcher {
-    fn fetch_history(&self, _pagination: Option<&Pagination>) -> Result<Page<CommitId>> {
+    fn fetch_history(&self, _pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>> {
         let res: Vec<MergeRequestVersion> = self
             .client
             .get(format!(

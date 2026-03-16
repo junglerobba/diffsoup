@@ -6,7 +6,7 @@ use url::Url;
 
 use crate::{
     error::{CustomError, Result},
-    pr::{OffsetPagination, Page, PageDirection, Pagination, PrFetcher},
+    pr::{HistoryEntry, OffsetPagination, Page, PageDirection, Pagination, PrFetcher},
 };
 
 #[derive(Debug)]
@@ -74,7 +74,7 @@ struct PrActivity {
     values: Vec<PrActivityEntry>,
 }
 
-impl TryFrom<PrActivity> for Page<CommitId> {
+impl TryFrom<PrActivity> for Page<HistoryEntry> {
     type Error = error_stack::Report<CustomError>;
 
     fn try_from(value: PrActivity) -> Result<Self> {
@@ -87,15 +87,26 @@ impl TryFrom<PrActivity> for Page<CommitId> {
 
         for (i, action) in actions.rev().enumerate() {
             if value.is_last_page && i == 0 {
-                let commit_id = CommitId::try_from_hex(&action.previous_from_hash).ok_or(
+                let from = CommitId::try_from_hex(&action.previous_from_hash).ok_or(
+                    CustomError::CommitError("invalid commit hash from bitbucket".into()),
+                )?;
+                let to = CommitId::try_from_hex(&action.previous_to_hash).ok_or(
                     CustomError::CommitError("invalid commit hash from bitbucket".into()),
                 )?;
 
-                commits.push(commit_id);
+                commits.push(HistoryEntry {
+                    head_ref: from,
+                    base_ref: Some(to),
+                });
             }
-            commits.push(CommitId::try_from_hex(&action.from_hash).ok_or(
-                CustomError::CommitError("invalid commit hash from bitbucket".into()),
-            )?);
+            commits.push(HistoryEntry {
+                head_ref: CommitId::try_from_hex(&action.from_hash).ok_or(
+                    CustomError::CommitError("invalid commit hash from bitbucket".into()),
+                )?,
+                base_ref: Some(CommitId::try_from_hex(&action.to_hash).ok_or(
+                    CustomError::CommitError("invalid commit hash from bitbucket".into()),
+                )?),
+            });
         }
 
         Ok(Self {
@@ -123,12 +134,12 @@ enum PrActivityEntry {
 struct PrRescopeAction {
     from_hash: String,
     previous_from_hash: String,
-    _to_hash: String,
-    _previous_to_hash: String,
+    to_hash: String,
+    previous_to_hash: String,
 }
 
 impl PrFetcher for BitbucketFetcher {
-    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<CommitId>> {
+    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>> {
         let (offset, limit) = match pagination {
             None => (0, None),
             Some(Pagination::Offset(pagination)) => (pagination.offset, pagination.limit),

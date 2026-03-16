@@ -4,7 +4,12 @@ mod gitlab;
 mod none;
 
 use error_stack::ResultExt;
-use jj_lib::{backend::CommitId, repo::ReadonlyRepo, workspace::Workspace};
+use jj_lib::{
+    backend::CommitId,
+    git_backend::GitBackend,
+    repo::{ReadonlyRepo, Repo},
+    workspace::Workspace,
+};
 use std::{fmt::Debug, sync::Arc};
 
 use crate::{
@@ -19,6 +24,21 @@ pub enum PageDirection {
     #[default]
     Forward,
     Backward,
+}
+
+#[derive(Debug, Clone)]
+pub struct HistoryEntry {
+    pub head_ref: CommitId,
+    pub base_ref: Option<CommitId>,
+}
+
+impl From<CommitId> for HistoryEntry {
+    fn from(value: CommitId) -> Self {
+        Self {
+            head_ref: value,
+            base_ref: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +78,7 @@ impl Pagination {
 }
 
 pub trait PrFetcher: Debug + Send {
-    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<CommitId>>;
+    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>>;
 }
 
 pub fn get_pr_fetcher(
@@ -89,7 +109,13 @@ pub fn get_pr_fetcher(
                         "WARNING: GITHUB_TOKEN is unset, and `gh` is not installed, authentication might fail or you could run into rate limits!"
                     );
                 }
-                Ok(Some(Box::new(GithubFetcher::new(&parsed, token)?)))
+                let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
+                    return Err(
+                        CustomError::CommitError("not backed by a git repo".to_string()).into(),
+                    );
+                };
+                let repo = git_backend.git_repo();
+                Ok(Some(Box::new(GithubFetcher::new(&parsed, token, repo)?)))
             } else if host.contains("bitbucket") {
                 let token = std::env::var("BITBUCKET_TOKEN").ok();
                 if token.is_none() {

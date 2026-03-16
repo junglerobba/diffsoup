@@ -12,7 +12,7 @@ use jj_lib::{
 use crate::{
     diff::parse_revset_expr,
     error::{CustomError, Result},
-    pr::{Page, PageDirection, Pagination, PrFetcher},
+    pr::{HistoryEntry, Page, PageDirection, Pagination, PrFetcher},
 };
 
 #[derive(Debug)]
@@ -54,8 +54,8 @@ impl PrFetcher for NoFetcher {
     fn fetch_history(
         &self,
         _pagination: Option<&Pagination>,
-    ) -> crate::error::Result<Page<CommitId>> {
-        let commits = vec![self.from.clone(), self.to.clone()];
+    ) -> crate::error::Result<Page<HistoryEntry>> {
+        let commits = vec![self.from.clone().into(), self.to.clone().into()];
         Ok(Page {
             items: commits,
             direction: PageDirection::Backward,

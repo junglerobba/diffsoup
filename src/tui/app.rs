@@ -217,8 +217,13 @@ fn draw(screen: &AppScreen, f: &mut ratatui::Frame) {
         AppScreen::Error(_) => "diffsoup - Error".to_string(),
         AppScreen::List(list_view) => {
             let total = list_view.total_commits;
+            let target = list_view
+                .target
+                .as_ref()
+                .map(|target| format!(" -> {target}"))
+                .unwrap_or_default();
             format!(
-                "diffsoup - Patchset [{}/{}] {} → [{}/{}] {}",
+                "diffsoup - Patchset [{}/{}] {} → [{}/{}] {}{target}",
                 list_view.base_index + 1,
                 total,
                 list_view.base_name,

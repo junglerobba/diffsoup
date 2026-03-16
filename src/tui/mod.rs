@@ -128,8 +128,9 @@ pub fn run(
                             msg: WorkerRequest::CalculateBranchDiff {
                                 from_index,
                                 to_index,
-                                from: from.clone(),
-                                to: to.clone(),
+                                from: from.head_ref.clone(),
+                                to: to.head_ref.clone(),
+                                target: to.base_ref.clone(),
                             },
                         })?;
                         app.current_job = Some(job_id);
@@ -169,8 +170,9 @@ pub fn run(
                             msg: WorkerRequest::CalculateBranchDiff {
                                 from_index: app.base_index,
                                 to_index: app.comparison_index,
-                                from: from.clone(),
-                                to: to.clone(),
+                                from: from.head_ref.clone(),
+                                to: to.head_ref.clone(),
+                                target: to.base_ref.clone(),
                             },
                         })?;
                         app.current_job = Some(job_id);

@@ -2,9 +2,9 @@ use std::sync::mpsc::Sender;
 
 use diffsoup::{
     diff::CommitDiff,
-    pr::{PageDirection, Pagination},
+    pr::{HistoryEntry, PageDirection, Pagination},
 };
-use jj_lib::{backend::CommitId, object_id::ObjectId};
+use jj_lib::object_id::ObjectId;
 use ratatui::widgets::ListState;
 
 use crate::tui::{
@@ -18,7 +18,7 @@ pub struct AppState {
     pub screen_size: (u16, u16),
     pub list_state: ListState,
     pub show_unchanged: bool,
-    pub commit_list: Vec<CommitId>,
+    pub commit_list: Vec<HistoryEntry>,
     pub next_page: Option<Pagination>,
     pub base_index: usize,
     pub comparison_index: usize,
@@ -45,6 +45,7 @@ pub struct ListView {
     pub comparison_name: String,
     pub comparison_index: usize,
     pub total_commits: usize,
+    pub target: Option<String>,
 }
 
 impl ListView {
@@ -154,10 +155,11 @@ impl AppState {
                         let _ = self.worker_req_tx.send(WorkerMsg {
                             job_id,
                             msg: WorkerRequest::CalculateBranchDiff {
-                                from: self.commit_list[from].clone(),
+                                from: self.commit_list[from].head_ref.clone(),
                                 from_index: from,
-                                to: self.commit_list[to].clone(),
+                                to: self.commit_list[to].head_ref.clone(),
                                 to_index: to,
+                                target: self.commit_list[to].base_ref.clone(),
                             },
                         });
                         self.current_job = Some(job_id);
@@ -184,17 +186,22 @@ impl AppState {
                     base_name: self
                         .commit_list
                         .get(from)
-                        .map(|c| c.hex())
+                        .map(|c| c.head_ref.hex())
                         .unwrap_or_default(),
                     base_index: from,
                     comparison_name: self
                         .commit_list
                         .get(to)
-                        .map(|c| c.hex())
+                        .map(|c| c.head_ref.hex())
                         .unwrap_or_default(),
                     comparison_index: to,
                     total_commits: self.commit_list.len(),
                     commits,
+                    target: self
+                        .commit_list
+                        .get(to)
+                        .and_then(|c| c.base_ref.as_ref())
+                        .map(|r| r.hex()),
                 };
                 let visible_commits = list_view.get_visible_commits();
                 let selected = if visible_commits.is_empty() {

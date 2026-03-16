@@ -10,10 +10,11 @@ query(
       timelineItems(
         last: $limit,
         before: $cursor,
-        itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT],
+        itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, BASE_REF_CHANGED_EVENT],
       ) {
         edges {
           node {
+            __typename
             ... on HeadRefForcePushedEvent {
               beforeCommit {
                 oid
@@ -21,6 +22,9 @@ query(
               afterCommit {
                 oid
               }
+            }
+            ... on BaseRefChangedEvent {
+              currentRefName
             }
           }
         }

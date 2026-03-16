@@ -1,4 +1,5 @@
 use error_stack::ResultExt;
+use gix::ThreadSafeRepository;
 use jj_lib::backend::CommitId;
 use reqwest::header::{AUTHORIZATION, HeaderMap, USER_AGENT};
 use serde::Deserialize;
@@ -8,7 +9,7 @@ use url::Url;
 
 use crate::{
     error::{CustomError, Result},
-    pr::{Page, PageDirection, Pagination, PrFetcher},
+    pr::{HistoryEntry, Page, PageDirection, Pagination, PrFetcher},
 };
 
 const GITHUB_GRAPHQL_URL: &str = "https://api.github.com/graphql";
@@ -18,12 +19,13 @@ const DEFAULT_PAGE_SIZE: usize = 25;
 pub struct GithubFetcher {
     client: reqwest::blocking::Client,
     owner: String,
-    repo: String,
+    repo_name: String,
     pr_id: usize,
+    repo: ThreadSafeRepository,
 }
 
 impl GithubFetcher {
-    pub fn new(url: &Url, token: Option<String>) -> Result<Self> {
+    pub fn new(url: &Url, token: Option<String>, repo: gix::Repository) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(
             USER_AGENT,
@@ -48,11 +50,12 @@ impl GithubFetcher {
         let segments: Vec<&str> = url.path_segments().ok_or(CustomError::UrlError)?.collect();
 
         match segments.as_slice() {
-            [owner, repo, "pull", pr_id, ..] => Ok(Self {
+            [owner, repo_name, "pull", pr_id, ..] => Ok(Self {
                 client,
                 owner: owner.to_string(),
-                repo: repo.to_string(),
+                repo_name: repo_name.to_string(),
                 pr_id: pr_id.parse().change_context(CustomError::UrlError)?,
+                repo: repo.into_sync(),
             }),
             _ => Err(CustomError::UrlError.into()),
         }
@@ -122,14 +125,28 @@ pub struct TimelineItems {
 
 #[derive(Debug, Deserialize)]
 pub struct Edge {
-    node: Node,
+    node: TimelineEvent,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Node {
+pub struct HeadRefForcePushedEvent {
     before_commit: Commit,
     after_commit: Commit,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaseRefChangedEvent {
+    current_ref_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+#[serde(tag = "__typename")]
+pub enum TimelineEvent {
+    HeadRefForcePushedEvent(HeadRefForcePushedEvent),
+    BaseRefChangedEvent(BaseRefChangedEvent),
 }
 
 #[derive(Debug, Deserialize)]
@@ -144,13 +161,20 @@ pub struct PageInfo {
     start_cursor: Option<String>,
 }
 
-impl TryFrom<GraphQlResponse> for Page<CommitId> {
+impl TryFrom<(&ThreadSafeRepository, GraphQlResponse)> for Page<HistoryEntry> {
     type Error = error_stack::Report<CustomError>;
 
-    fn try_from(value: GraphQlResponse) -> Result<Self> {
-        let page_info = value.data.repository.pull_request.timeline_items.page_info;
+    fn try_from(value: (&ThreadSafeRepository, GraphQlResponse)) -> Result<Self> {
+        let (repo, response) = value;
+        let page_info = response
+            .data
+            .repository
+            .pull_request
+            .timeline_items
+            .page_info;
         let mut commits = Vec::new();
-        for (i, entry) in value
+        let mut base_ref = None;
+        for (i, entry) in response
             .data
             .repository
             .pull_request
@@ -159,14 +183,38 @@ impl TryFrom<GraphQlResponse> for Page<CommitId> {
             .iter()
             .enumerate()
         {
-            if !page_info.has_previous_page && i == 0 {
-                commits.push(CommitId::try_from_hex(&entry.node.before_commit.oid).ok_or(
-                    CustomError::CommitError("invalid commit hash from github".into()),
-                )?);
+            match &entry.node {
+                TimelineEvent::HeadRefForcePushedEvent(event) => {
+                    if !page_info.has_previous_page && i == 0 {
+                        commits.push(HistoryEntry {
+                            head_ref: CommitId::try_from_hex(&event.before_commit.oid).ok_or(
+                                CustomError::CommitError("invalid commit hash from github".into()),
+                            )?,
+                            base_ref: base_ref.clone(),
+                        });
+                    }
+                    commits.push(HistoryEntry {
+                        head_ref: CommitId::try_from_hex(&event.after_commit.oid).ok_or(
+                            CustomError::CommitError("invalid commit hash from github".into()),
+                        )?,
+                        base_ref: base_ref.clone(),
+                    });
+                }
+                TimelineEvent::BaseRefChangedEvent(event) => {
+                    let repo = repo.to_thread_local();
+                    let Some(id) = repo
+                        .try_find_reference(&event.current_ref_name)
+                        .change_context(CustomError::RepoError)?
+                        .and_then(|reference| reference.try_id())
+                    else {
+                        continue;
+                    };
+                    let Some(commit_id) = CommitId::try_from_hex(id.to_hex().to_string()) else {
+                        continue;
+                    };
+                    base_ref = Some(commit_id);
+                }
             }
-            commits.push(CommitId::try_from_hex(&entry.node.after_commit.oid).ok_or(
-                CustomError::CommitError("invalid commit hash from github".into()),
-            )?);
         }
 
         Ok(Self {
@@ -174,7 +222,7 @@ impl TryFrom<GraphQlResponse> for Page<CommitId> {
             next: page_info.has_previous_page.then_some(Pagination::Cursor(
                 super::CursorPagination {
                     cursor: page_info.start_cursor,
-                    limit: value
+                    limit: response
                         .data
                         .repository
                         .pull_request
@@ -190,7 +238,7 @@ impl TryFrom<GraphQlResponse> for Page<CommitId> {
 }
 
 impl PrFetcher for GithubFetcher {
-    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<CommitId>> {
+    fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>> {
         let (cursor, limit) = match pagination {
             None => (None.as_ref(), DEFAULT_PAGE_SIZE),
             Some(Pagination::Cursor(pagination)) => (pagination.cursor.as_ref(), pagination.limit),
@@ -206,7 +254,7 @@ impl PrFetcher for GithubFetcher {
             "query" : query,
             "variables": {
                 "owner": self.owner,
-                "repo": self.repo,
+                "repo": self.repo_name,
                 "pr": self.pr_id,
                 "cursor": cursor,
                 "limit": limit
@@ -219,6 +267,6 @@ impl PrFetcher for GithubFetcher {
             .send()
             .change_context(CustomError::RequestError)?;
         let res: GraphQlResponse = res.json().change_context(CustomError::RequestError)?;
-        res.try_into()
+        (&self.repo, res).try_into()
     }
 }

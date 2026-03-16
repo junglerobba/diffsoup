@@ -6,7 +6,7 @@ use std::{
 use diffsoup::{
     diff::{CommitDiff, calculate_branch_diff, get_commit},
     error::{CustomError, Result},
-    pr::{Page, Pagination, PrFetcher},
+    pr::{HistoryEntry, Page, Pagination, PrFetcher},
     repo::{ensure_commits_exist, fetch_commits},
     trees::DiffTree,
 };
@@ -35,6 +35,7 @@ pub enum WorkerRequest {
         from_index: usize,
         to: CommitId,
         to_index: usize,
+        target: Option<CommitId>,
     },
     RenderInterdiff {
         from: Option<CommitId>,
@@ -59,7 +60,7 @@ pub enum WorkerResponse {
         scroll: u16,
     },
     LoadCommits {
-        page: Page<CommitId>,
+        page: Page<HistoryEntry>,
     },
 }
 
@@ -77,7 +78,12 @@ pub fn spawn_worker_thread(
                 WorkerRequest::LoadCommits { pagination } => {
                     match pr_fetcher.fetch_history(pagination.as_ref()) {
                         Ok(page) => {
-                            let missing = ensure_commits_exist(&page.items, repo.as_ref())?;
+                            let items = page
+                                .items
+                                .iter()
+                                .flat_map(|entry| [entry.base_ref.as_ref(), Some(&entry.head_ref)])
+                                .flatten();
+                            let missing = ensure_commits_exist(items, repo.as_ref())?;
                             if !missing.is_empty() {
                                 worker_response_tx
                                     .send(WorkerMsg {
@@ -102,7 +108,8 @@ pub fn spawn_worker_thread(
                     from_index,
                     to,
                     to_index,
-                } => calculate_branch_diff(&from, &to, &workspace, repo.as_ref())
+                    target,
+                } => calculate_branch_diff(&from, &to, target.as_ref(), &workspace, repo.as_ref())
                     .map(|diff| WorkerResponse::CalculateBranchDiff {
                         commits: diff,
                         from: from_index,
