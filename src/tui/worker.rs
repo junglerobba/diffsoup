@@ -129,7 +129,7 @@ pub fn spawn_worker_thread(
     })
 }
 
-pub fn render_interdiff(
+fn render_interdiff(
     from_sha: &Option<CommitId>,
     to_sha: &Option<CommitId>,
     workspace: &Workspace,

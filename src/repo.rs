@@ -122,15 +122,15 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
     .change_context(CustomError::RepoError)
     .attach("could not initialize jj repo")?;
 
-    let mut tx = start_repo_transaction(&repo, &[]);
-    git::import_refs(
+    let mut tx = start_repo_transaction(&repo, workspace.workspace_name(), &[]);
+    block_on(git::import_refs(
         tx.repo_mut(),
         &GitImportOptions {
             auto_local_bookmark: false,
             abandon_unreachable_commits: false,
             remote_auto_track_bookmarks: HashMap::new(),
         },
-    )
+    ))
     .change_context(CustomError::RepoError)?;
 
     let repo = block_on(tx.commit("import git refs")).change_context(CustomError::RepoError)?;
@@ -252,9 +252,7 @@ pub fn fetch_commits(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    tx.repo_mut()
-        .add_heads(&commits)
-        .change_context(CustomError::RepoError)?;
+    block_on(tx.repo_mut().add_heads(&commits)).change_context(CustomError::RepoError)?;
 
     for commit in &commits {
         tx.repo_mut().remove_head(commit.id());

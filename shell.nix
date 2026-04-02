@@ -14,6 +14,7 @@ pkgs.mkShell {
   ];
   packages = with pkgs; [
     clippy
+    cargo-audit
     rustfmt
     rust-analyzer
   ];

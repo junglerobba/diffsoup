@@ -31,8 +31,7 @@ use jj_lib::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    fs::canonicalize,
-    path::PathBuf,
+    env::current_dir,
     sync::Arc,
 };
 
@@ -124,7 +123,7 @@ pub fn parse_revset_expr(
     repo: &impl Repo,
     aliases_map: &RevsetAliasesMap,
 ) -> Result<Arc<ResolvedRevsetExpression>> {
-    let cwd = canonicalize(PathBuf::from(".")).change_context(CustomError::RepoError)?;
+    let cwd = current_dir().change_context(CustomError::RepoError)?;
     let context = RevsetParseContext {
         aliases_map,
         local_variables: HashMap::new(),
@@ -322,7 +321,7 @@ pub fn render_interdiff(
 
     let matcher = jj_lib::matchers::EverythingMatcher;
 
-    let cwd = canonicalize(PathBuf::from(".")).change_context(CustomError::RepoError)?;
+    let cwd = current_dir().change_context(CustomError::RepoError)?;
     let repo_path_converter = RepoPathUiConverter::Fs {
         cwd,
         base: workspace.workspace_root().to_owned(),
