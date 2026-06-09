@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use error_stack::ResultExt;
+use futures::executor::block_on_stream;
 use jj_cli::{cli_util::load_revset_aliases, ui::Ui};
 use jj_lib::{
     backend::CommitId,
@@ -23,14 +24,16 @@ pub struct NoFetcher {
 fn load_commit(id: &str, repo: &impl Repo, workspace: &Workspace) -> Result<CommitId> {
     let aliases_map = load_revset_aliases(&Ui::null(), workspace.settings().config())
         .map_err(|_| CustomError::RepoError)?;
-    let (id, _) = parse_revset_expr(id, workspace, repo, &aliases_map)?
-        .evaluate(repo)
-        .change_context(CustomError::ExprError)?
-        .commit_change_ids()
-        .next()
-        .ok_or(CustomError::ExprError)
-        .attach_opaque_with(|| format!("could not resolve expression {} to a commit", id))?
-        .change_context(CustomError::RepoError)?;
+    let (id, _) = block_on_stream(
+        parse_revset_expr(id, workspace, repo, &aliases_map)?
+            .evaluate(repo)
+            .change_context(CustomError::ExprError)?
+            .commit_change_ids(),
+    )
+    .next()
+    .ok_or(CustomError::ExprError)
+    .attach_opaque_with(|| format!("could not resolve expression {} to a commit", id))?
+    .change_context(CustomError::RepoError)?;
     Ok(id)
 }
 

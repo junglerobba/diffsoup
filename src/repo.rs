@@ -126,8 +126,8 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
     block_on(git::import_refs(
         tx.repo_mut(),
         &GitImportOptions {
-            auto_local_bookmark: false,
             abandon_unreachable_commits: false,
+            record_synthetic_predecessors: true,
             remote_auto_track_bookmarks: HashMap::new(),
         },
     ))

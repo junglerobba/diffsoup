@@ -2,8 +2,8 @@ use crate::{
     error::{CustomError, Result},
     trees::DiffTree,
 };
-use error_stack::ResultExt;
-use futures::executor::block_on;
+use error_stack::{Report, ResultExt};
+use futures::{TryFutureExt, TryStreamExt, executor::block_on};
 use gix::bstr::ByteSlice;
 use jj_cli::{
     cli_util::load_revset_aliases,
@@ -23,7 +23,7 @@ use jj_lib::{
     repo_path::RepoPathUiConverter,
     revset::{
         self, ResolvedRevsetExpression, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression,
-        RevsetExtensions, RevsetIteratorExt, RevsetParseContext, RevsetWorkspaceContext,
+        RevsetExtensions, RevsetParseContext, RevsetStreamExt, RevsetWorkspaceContext,
         SymbolResolver, SymbolResolverExtension,
     },
     rewrite::rebase_to_dest_parent,
@@ -73,14 +73,19 @@ pub fn get_commit(sha: &CommitId, repo: &impl Repo) -> Result<Commit> {
         .change_context(CustomError::RepoError)
 }
 
-fn get_commits(revset: Arc<ResolvedRevsetExpression>, repo: &impl Repo) -> Result<Vec<Commit>> {
-    revset
+async fn get_commits(
+    revset: Arc<ResolvedRevsetExpression>,
+    repo: &impl Repo,
+) -> Result<Vec<Commit>> {
+    let commits: Vec<_> = revset
         .evaluate(repo)
         .change_context(CustomError::ExprError)?
-        .iter()
+        .stream()
         .commits(repo.store())
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .change_context(CustomError::ExprError)
+        .try_collect()
+        .map_err(|err| Report::new(CustomError::ExprError).attach(err))
+        .await?;
+    Ok(commits)
 }
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq)]
@@ -168,13 +173,13 @@ pub fn calculate_branch_diff(
     ])));
 
     let from_expr = fork_point_expr.range(&from_branch.clone());
-    let from_commits = get_commits(from_expr, repo)?;
+    let from_commits = block_on(get_commits(from_expr, repo))?;
 
     let to_expr = Arc::new(RevsetExpression::Difference(
         to_branch.ancestors(),
         trunk.ancestors(),
     ));
-    let to_commits = get_commits(to_expr, repo)?;
+    let to_commits = block_on(get_commits(to_expr, repo))?;
 
     let from_sources = from_commits
         .iter()
