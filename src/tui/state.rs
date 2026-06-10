@@ -178,16 +178,8 @@ impl AppState {
             WorkerResponse::CalculateBranchDiff { commits, from, to } => {
                 self.base_index = from;
                 self.comparison_index = to;
-                let selected = if commits.is_empty() {
-                    None
-                } else {
-                    Some(std::cmp::min(
-                        commits.len() - 1,
-                        self.list_state.selected().unwrap_or_default(),
-                    ))
-                };
-                self.screen = AppScreen::List(ListView {
-                    list_state: self.list_state.with_selected(selected),
+                let mut list_view = ListView {
+                    list_state: self.list_state,
                     show_unchanged: self.show_unchanged,
                     base_name: self
                         .commit_list
@@ -203,7 +195,18 @@ impl AppState {
                     comparison_index: to,
                     total_commits: self.commit_list.len(),
                     commits,
-                });
+                };
+                let visible_commits = list_view.get_visible_commits();
+                let selected = if visible_commits.is_empty() {
+                    None
+                } else {
+                    Some(std::cmp::min(
+                        visible_commits.len() - 1,
+                        self.list_state.selected().unwrap_or_default(),
+                    ))
+                };
+                list_view.list_state.select(selected);
+                self.screen = AppScreen::List(list_view);
                 let Some(next) = &self.next_page else {
                     return;
                 };
