@@ -136,7 +136,6 @@ pub fn parse_revset_expr(
         date_pattern_context: chrono::Utc::now().fixed_offset().into(),
         default_ignored_remote: None,
         fileset_aliases_map: &AliasesMap::default(),
-        use_glob_by_default: false,
         extensions: &RevsetExtensions::default(),
         workspace: Some(RevsetWorkspaceContext {
             path_converter: &RepoPathUiConverter::Fs {
