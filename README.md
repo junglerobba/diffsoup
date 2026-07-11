@@ -22,7 +22,8 @@ This way it requires no special support from the forge other than pull request h
 ### Authentication
 For accessing pull request history, authentication may be required. This is currently done via environment variables:
 
- - GitHub: `GITHUB_TOKEN`
+ - GitHub: `GITHUB_TOKEN`, with `gh auth token` as a fallback, if `gh` is installed
+ - Gitlab: `GITLAB_TOKEN`
  - Bitbucket Data Center: `BITBUCKET_TOKEN`
 
 ### Change tracking

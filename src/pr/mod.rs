@@ -77,10 +77,16 @@ pub fn get_pr_fetcher(
             let host = parsed.host_str().ok_or(CustomError::UrlError)?;
 
             if host.contains("github.com") {
-                let token = std::env::var("GITHUB_TOKEN").ok();
+                let token = match std::env::var("GITHUB_TOKEN") {
+                    Ok(token) => Ok(Some(token)),
+                    Err(std::env::VarError::NotPresent) => github::get_token(),
+                    Err(e) => Err(e).change_context(CustomError::ProcessError(
+                        "could not read GITHUB_TOKEN env var".into(),
+                    )),
+                }?;
                 if token.is_none() {
                     println!(
-                        "WARNING: GITHUB_TOKEN is not set, authentication might fail or you could run into rate limits!"
+                        "WARNING: GITHUB_TOKEN is unset, and `gh` is not installed, authentication might fail or you could run into rate limits!"
                     );
                 }
                 Ok(Some(Box::new(GithubFetcher::new(&parsed, token)?)))
