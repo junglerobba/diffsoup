@@ -15,3 +15,5 @@ jobs:
         run: nix develop --command cargo check --all-targets
       - name: Clippy
         run: nix develop --command cargo clippy --all-targets -- -Dwarnings
+      - name: Test
+        run: nix develop --command cargo test --all-targets
