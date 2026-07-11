@@ -60,7 +60,7 @@ pub struct CommitMeta {
     pub message: String,
 }
 
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct DiffStats {
     pub additions: usize,
     pub removals: usize,

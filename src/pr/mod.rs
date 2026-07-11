@@ -28,7 +28,7 @@ pub struct Page<T> {
     pub next: Option<Pagination>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct OffsetPagination {
     offset: usize,
     limit: Option<usize>,
