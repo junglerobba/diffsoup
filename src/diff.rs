@@ -40,16 +40,18 @@ pub struct CommitDiff {
     pub from: Option<CommitMeta>,
     pub to: Option<CommitMeta>,
     pub stats: DiffStats,
+    pub moved: Option<isize>,
 }
 
 impl CommitDiff {
     pub fn has_changes(&self) -> bool {
-        match (&self.from, &self.to) {
-            (None, Some(_)) | (Some(_), None) => true,
-            (Some(from), Some(to)) => {
+        match (&self.from, &self.to, self.moved.is_some()) {
+            (_, _, true) => true,
+            (None, Some(_), _) | (Some(_), None, _) => true,
+            (Some(from), Some(to), _) => {
                 (self.stats.changed_files > 0 || from.message != to.message) && from.sha != to.sha
             }
-            (None, None) => false,
+            (None, None, _) => false,
         }
     }
 }
@@ -245,6 +247,8 @@ pub fn calculate_branch_diff(
 
     let mut commit_diffs = Vec::new();
 
+    let moved = get_moved(&from_sources, &to_sources);
+
     for change_id in change_ids {
         let from_commit = from_map.get(change_id);
         let to_commit = to_map.get(change_id);
@@ -271,11 +275,77 @@ pub fn calculate_branch_diff(
         commit_diffs.push(CommitDiff {
             from: from_meta,
             to: to_meta,
+            moved: moved.get(change_id).copied(),
             stats,
         });
     }
 
     Ok(commit_diffs)
+}
+
+fn get_moved<'a>(from: &'a [DiffSource], to: &'a [DiffSource]) -> HashMap<&'a DiffSource, isize> {
+    let to_set: HashSet<_> = to.iter().collect();
+    let old_common_idx: HashMap<_, _> = from
+        .iter()
+        .filter(|change| to_set.contains(change))
+        .enumerate()
+        .map(|(index, i)| (i, index))
+        .collect();
+    let new_common: Vec<_> = to
+        .iter()
+        .filter(|change| old_common_idx.contains_key(change))
+        .collect();
+    let positions: Vec<_> = new_common
+        .iter()
+        .map(|change| old_common_idx[change])
+        .collect();
+
+    let lis = longest_increasing_subsequence(&positions);
+
+    let mut res = HashMap::new();
+    for (index, id) in new_common.into_iter().enumerate() {
+        if lis.contains(&index) {
+            continue;
+        }
+        let Some(from) = old_common_idx.get(id) else {
+            continue;
+        };
+        let movement = (*from as isize) - (index as isize);
+        if movement != 0 {
+            res.insert(id, movement);
+        }
+    }
+    res
+}
+
+fn longest_increasing_subsequence(seq: &[usize]) -> HashSet<usize> {
+    let mut lis = HashSet::new();
+
+    let mut prev = vec![None; seq.len()];
+    let mut tails = Vec::new();
+    let mut tails_index = Vec::new();
+
+    for (index, seq) in seq.iter().enumerate() {
+        let pos = tails.partition_point(|x| *x < *seq);
+        if pos == tails.len() {
+            tails.push(*seq);
+            tails_index.push(index);
+        } else {
+            tails[pos] = *seq;
+            tails_index[pos] = index;
+        }
+
+        if pos > 0 {
+            prev[index] = Some(tails_index[pos - 1]);
+        }
+    }
+    let mut idx = tails_index.last();
+    while let Some(i) = idx {
+        lis.insert(*i);
+        idx = prev[*i].as_ref();
+    }
+
+    lis
 }
 
 fn calculate_diff_stats(from: &Commit, to: &Commit, repo: &impl Repo) -> Result<DiffStats> {
@@ -361,4 +431,126 @@ pub fn render_interdiff(
 
     drop(formatter);
     Ok(diff.to_str_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DiffSource, HashMap, get_moved};
+
+    #[test]
+    fn test_get_moved_no_moves() {
+        assert_eq!(
+            get_moved(
+                &[
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("B".into()),
+                    DiffSource::ChangeId("C".into()),
+                ],
+                &[
+                    DiffSource::ChangeId("D".into()),
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("B".into()),
+                    DiffSource::ChangeId("X".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("E".into()),
+                ]
+            ),
+            HashMap::new()
+        );
+    }
+
+    #[test]
+    fn test_get_moved_item_to_back() {
+        assert_eq!(
+            get_moved(
+                &[
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("B".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("D".into()),
+                ],
+                &[
+                    DiffSource::ChangeId("B".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("D".into()),
+                    DiffSource::ChangeId("A".into()),
+                ]
+            ),
+            HashMap::from([(&DiffSource::ChangeId("A".into()), -3)])
+        );
+    }
+
+    #[test]
+    fn test_get_moved() {
+        assert_eq!(
+            get_moved(
+                &[
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("B".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("D".into()),
+                    DiffSource::ChangeId("E".into()),
+                    DiffSource::ChangeId("F".into()),
+                ],
+                &[
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("B".into()),
+                    DiffSource::ChangeId("D".into()),
+                    DiffSource::ChangeId("F".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("E".into()),
+                ]
+            ),
+            HashMap::from([
+                (&DiffSource::ChangeId("D".into()), 1),
+                (&DiffSource::ChangeId("F".into()), 2)
+            ])
+        )
+    }
+
+    #[test]
+    fn test_get_moved_with_added_and_removed() {
+        assert_eq!(
+            get_moved(
+                &[
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("B".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("D".into()),
+                ],
+                &[
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("X".into()),
+                    DiffSource::ChangeId("D".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("E".into()),
+                ]
+            ),
+            HashMap::from([(&DiffSource::ChangeId("D".into()), 1)])
+        )
+    }
+
+    #[test]
+    fn test_get_moved_excludes_zero() {
+        assert!(
+            get_moved(
+                &[
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("B".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("D".into()),
+                ],
+                &[
+                    DiffSource::ChangeId("D".into()),
+                    DiffSource::ChangeId("A".into()),
+                    DiffSource::ChangeId("Y".into()),
+                    DiffSource::ChangeId("C".into()),
+                    DiffSource::ChangeId("X".into()),
+                    DiffSource::ChangeId("B".into()),
+                ]
+            )
+            .values()
+            .all(|v| *v != 0)
+        );
+    }
 }

@@ -340,13 +340,17 @@ fn render_list(
 fn format_commit_item(commit: &CommitDiff) -> ListItem<'_> {
     let has_changes = commit.has_changes();
 
-    let (status_icon, base_style) = match (&commit.from, &commit.to) {
-        (None, Some(_)) => ("+ ", Style::default().fg(Color::Green)),
-        (Some(_), None) => ("- ", Style::default().fg(Color::Red)),
-        (Some(from), Some(to)) if from.message != to.message => {
+    let (status_icon, base_style) = match (&commit.from, &commit.to, &commit.moved) {
+        (None, Some(_), _) => ("+ ", Style::default().fg(Color::Green)),
+        (Some(_), None, _) => ("- ", Style::default().fg(Color::Red)),
+        (Some(_), Some(_), Some(moved)) => {
+            let direction = if moved.is_positive() { "▲ " } else { "▼ " };
+            (direction, Style::default().fg(Color::Cyan))
+        }
+        (Some(from), Some(to), _) if from.message != to.message => {
             ("✎ ", Style::default().fg(Color::Cyan))
         }
-        (Some(from), Some(to)) if from.sha != to.sha && has_changes => {
+        (Some(from), Some(to), _) if from.sha != to.sha && has_changes => {
             ("~ ", Style::default().fg(Color::Yellow))
         }
         _ => ("  ", Style::default().fg(Color::DarkGray)),
@@ -366,20 +370,28 @@ fn format_commit_item(commit: &CommitDiff) -> ListItem<'_> {
         .map(|(subject, _)| subject)
         .unwrap_or("<no message>");
 
-    let sha_info = match (&commit.from, &commit.to) {
-        (Some(from), Some(to)) if from.sha != to.sha => {
+    let sha_info = match (&commit.from, &commit.to, &commit.moved) {
+        (Some(from), Some(_), Some(moved)) => {
+            format!(
+                "{} ({}{})",
+                &from.sha[..8],
+                if moved.is_positive() { "↑" } else { "↓" },
+                moved.abs()
+            )
+        }
+        (Some(from), Some(to), None) if from.sha != to.sha => {
             format!("{} → {}", &from.sha[..8], &to.sha[..8])
         }
-        (Some(c), None) => format!("{} (removed)", &c.sha[..8]),
-        (None, Some(c)) => format!("{} (new)", &c.sha[..8]),
-        (Some(c), Some(_)) => c.sha[..8].to_string(),
+        (Some(c), None, _) => format!("{} (removed)", &c.sha[..8]),
+        (None, Some(c), _) => format!("{} (new)", &c.sha[..8]),
+        (Some(c), Some(_), _) => c.sha[..8].to_string(),
         _ => "????????".to_string(),
     };
 
     let stats_text = if commit.stats.changed_files > 0 {
         format!(
             " [±{} files, +{}, -{}]",
-            commit.stats.changed_files, commit.stats.additions, commit.stats.removals
+            commit.stats.changed_files, commit.stats.additions, commit.stats.removals,
         )
     } else {
         String::new()
