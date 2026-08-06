@@ -10,10 +10,11 @@ use jj_lib::{
     backend::CommitId,
     commit::Commit,
     config::{ConfigLayer, ConfigSource},
+    default_backend_factories::default_backend_factories,
     git::{self, GitImportOptions, GitRefKind, parse_git_ref},
     git_backend::GitBackend,
     local_working_copy::{LocalWorkingCopy, LocalWorkingCopyFactory},
-    repo::{ReadonlyRepo, Repo, StoreFactories},
+    repo::{ReadonlyRepo, Repo},
     settings::UserSettings,
     workspace::{
         DefaultWorkspaceLoaderFactory, WorkingCopyFactories, Workspace, WorkspaceLoaderFactory,
@@ -60,7 +61,7 @@ fn load_jj_repo(path: &Path) -> Result<Workspace> {
     let config = config_env
         .resolve_config(&raw_config)
         .change_context(CustomError::RepoError)?;
-    let mut store_factories = StoreFactories::default();
+    let mut store_factories = default_backend_factories();
     store_factories.add_backend(
         GitBackend::name(),
         Box::new(|settings, store_path| Ok(Box::new(GitBackend::load(settings, store_path)?))),
