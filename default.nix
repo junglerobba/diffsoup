@@ -2,6 +2,7 @@
   lib,
   rustPlatform,
   shortRev ? "",
+  git,
 }:
 let
   packageVersion = (fromTOML (builtins.readFile ./Cargo.toml)).package.version;
@@ -28,6 +29,10 @@ rustPlatform.buildRustPackage {
   cargoLock = {
     lockFile = ./Cargo.lock;
   };
+
+  nativeCheckInputs = [
+    git
+  ];
 
   meta.mainProgram = "diffsoup";
 }

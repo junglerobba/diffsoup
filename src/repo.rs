@@ -263,3 +263,44 @@ pub fn fetch_commits(
 
     Ok(updated_repo)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    fn init_git_repo() -> anyhow::Result<temp_dir::TempDir> {
+        let dir = temp_dir::TempDir::new()?;
+        std::process::Command::new("git")
+            .args(["-C", dir.path().to_str().unwrap(), "init"])
+            .status()?;
+        for remote in ["upstream", "origin"] {
+            std::fs::create_dir_all(dir.path().join(format!(".git/refs/remotes/{remote}")))?;
+            let mut file =
+                std::fs::File::create(dir.path().join(format!(".git/refs/remotes/{remote}/HEAD")))?;
+            writeln!(&mut file, "ref: refs/remotes/{remote}/main")?;
+        }
+        Ok(dir)
+    }
+
+    #[test]
+    fn test_import_git_repo() -> anyhow::Result<()> {
+        let dir = init_git_repo()?;
+        let handle = super::open(dir.path());
+
+        assert!(handle.is_ok(), "repo import failed");
+        let handle = handle.unwrap();
+        assert_eq!(
+            handle
+                .workspace
+                .settings()
+                .get_string("revset-aliases.\"trunk()\"")
+                .expect("should get config value"),
+            "main@upstream"
+        );
+        assert!(
+            !dir.path().join(".jj").exists(),
+            ".jj should not be created"
+        );
+        Ok(())
+    }
+}
