@@ -12,7 +12,19 @@ rustPlatform.buildRustPackage {
   pname = "diffsoup";
   inherit version;
 
-  src = lib.cleanSource ./.;
+  src =
+    let
+      fs = lib.fileset;
+    in
+    fs.toSource {
+      root = ./.;
+      fileset = fs.unions [
+        ./src
+        ./Cargo.lock
+        ./Cargo.toml
+      ];
+    };
+
   cargoLock = {
     lockFile = ./Cargo.lock;
   };
