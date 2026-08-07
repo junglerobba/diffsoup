@@ -9,11 +9,5 @@ jobs:
       - name: Install nix
         uses: cachix/install-nix-action@v31
       - uses: actions/checkout@v6
-      - name: Check formatting
-        run: nix develop --command cargo fmt --check
-      - name: Build
-        run: nix develop --command cargo check --all-targets
-      - name: Clippy
-        run: nix develop --command cargo clippy --all-targets -- -Dwarnings
-      - name: Test
-        run: nix develop --command cargo test --all-targets
+      - name: Run flake checks
+        run: nix flake check . -L
