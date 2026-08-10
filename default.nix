@@ -3,6 +3,7 @@
   rustPlatform,
   shortRev ? "",
   git,
+  jujutsu,
 }:
 let
   packageVersion = (fromTOML (builtins.readFile ./Cargo.toml)).package.version;
@@ -30,8 +31,13 @@ rustPlatform.buildRustPackage {
     lockFile = ./Cargo.lock;
   };
 
+  preCheck = ''
+    export XDG_CONFIG_HOME=$(mktemp -d)
+  '';
+
   nativeCheckInputs = [
     git
+    jujutsu
   ];
 
   meta.mainProgram = "diffsoup";

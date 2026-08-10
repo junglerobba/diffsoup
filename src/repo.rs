@@ -304,4 +304,34 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn test_import_jj_repo() -> anyhow::Result<()> {
+        let dir = init_git_repo()?;
+        std::process::Command::new("jj")
+            .current_dir(dir.path())
+            .args(["git", "init", "--colocate"])
+            .status()?;
+        let mtime = dir.path().join(".jj").metadata()?.modified()?;
+
+        let handle = super::open(dir.path());
+
+        assert!(handle.is_ok(), "repo import failed");
+        let handle = handle.unwrap();
+        assert_eq!(
+            handle
+                .workspace
+                .settings()
+                .get_string("revset-aliases.\"trunk()\"")
+                .expect("should get config value"),
+            "main@upstream"
+        );
+        assert!(dir.path().join(".jj").exists(), ".jj should exist");
+        assert_eq!(
+            mtime,
+            dir.path().join(".jj").metadata()?.modified()?,
+            ".jj should not have been modified"
+        );
+        Ok(())
+    }
 }
