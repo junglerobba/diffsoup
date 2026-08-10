@@ -32,7 +32,7 @@ with the same priority as usual.
 ```gitconfig
 # subsection name must match pull request URL
 [diffsoup "https://git.example.org"]
-    # one of github, gitlab, bitbucket-datacenter
+    # one of github, gitlab, bitbucket, bitbucket-datacenter
     forge = gitlab
     # optional, env used as fallback
     tokenCommand = pass Token/git.example.org
@@ -47,7 +47,7 @@ overriding it via these env vars:
  - GitHub: `GITHUB_TOKEN`, with `gh auth token` as a fallback, if `gh` is
   installed
  - Gitlab: `GITLAB_TOKEN`
- - Bitbucket Data Center: `BITBUCKET_TOKEN`
+ - Bitbucket Cloud / Data Center: `BITBUCKET_TOKEN`
 
 tokenCommand executes as a shell command, so use with caution, and only in
 trusted repos.

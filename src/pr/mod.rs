@@ -1,4 +1,5 @@
 mod bitbucket;
+mod bitbucket_cloud;
 mod github;
 mod gitlab;
 mod none;
@@ -17,7 +18,8 @@ use url::Url;
 use crate::{
     error::{CustomError, Result},
     pr::{
-        bitbucket::BitbucketFetcher, github::GithubFetcher, gitlab::GitlabFetcher, none::NoFetcher,
+        bitbucket::BitbucketFetcher, bitbucket_cloud::BitbucketCloudFetcher, github::GithubFetcher,
+        gitlab::GitlabFetcher, none::NoFetcher,
     },
 };
 
@@ -83,6 +85,7 @@ impl Pagination {
 enum Forge {
     Github,
     Gitlab,
+    Bitbucket,
     BitbucketDatacenter,
 }
 
@@ -91,6 +94,7 @@ impl Forge {
         match host.as_ref() {
             "github" => Some(Self::Github),
             "gitlab" => Some(Self::Gitlab),
+            "bitbucket" => Some(Self::Bitbucket),
             "bitbucket-datacenter" => Some(Self::BitbucketDatacenter),
             _ => None,
         }
@@ -100,6 +104,7 @@ impl Forge {
         match url.host_str() {
             Some("github.com") => Some(Self::Github),
             Some("gitlab.com") => Some(Self::Gitlab),
+            Some("bitbucket.org") => Some(Self::Bitbucket),
             _ => None,
         }
     }
@@ -108,14 +113,14 @@ impl Forge {
         match self {
             Self::Github => "GITHUB_TOKEN",
             Self::Gitlab => "GITLAB_TOKEN",
-            Self::BitbucketDatacenter => "BITBUCKET_TOKEN",
+            Self::BitbucketDatacenter | Self::Bitbucket => "BITBUCKET_TOKEN",
         }
     }
 
     fn cmd(self) -> Option<(&'static str, String)> {
         match self {
             Self::Github => Some(("gh", "auth token".to_string())),
-            Self::Gitlab | Self::BitbucketDatacenter => None,
+            Self::Gitlab | Self::Bitbucket | Self::BitbucketDatacenter => None,
         }
     }
 }
@@ -261,6 +266,7 @@ pub fn get_pr_fetcher(
             match config.forge {
                 Forge::Github => Ok(Some(Box::new(GithubFetcher::new(&parsed, token, repo)?))),
                 Forge::Gitlab => Ok(Some(Box::new(GitlabFetcher::new(&parsed, token)?))),
+                Forge::Bitbucket => Ok(Some(Box::new(BitbucketCloudFetcher::new(&parsed, token)?))),
                 Forge::BitbucketDatacenter => {
                     Ok(Some(Box::new(BitbucketFetcher::new(&parsed, token)?)))
                 }
