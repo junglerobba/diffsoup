@@ -24,13 +24,33 @@ gerrit-style view of each iteration.
 This way it requires no special support from the forge other than pull request
 history.
 
-### Authentication
-For accessing pull request history, authentication may be required. This is
-currently done via environment variables:
+### Configuration and authentication
+Configuration is done through gitconfig, through user and repo level config,
+with the same priority as usual.
 
- - GitHub: `GITHUB_TOKEN`, with `gh auth token` as a fallback, if `gh` is installed
+`~/.gitconfig`
+```gitconfig
+# subsection name must match pull request URL
+[diffsoup "https://git.example.org"]
+    # one of github, gitlab, bitbucket-datacenter
+    forge = gitlab
+    # optional, env used as fallback
+    tokenCommand = pass Token/git.example.org
+```
+
+The tool attempts to detect forge automatically from the pull request URL, but
+manual configuration always takes precedence.
+Same with authentication, which might be required for accessing pull request
+history, where the output of tokenCommand is used, with the possibility of
+overriding it via these env vars:
+
+ - GitHub: `GITHUB_TOKEN`, with `gh auth token` as a fallback, if `gh` is
+  installed
  - Gitlab: `GITLAB_TOKEN`
  - Bitbucket Data Center: `BITBUCKET_TOKEN`
+
+tokenCommand executes as a shell command, so use with caution, and only in
+trusted repos.
 
 ### Change tracking
 For reliable tracking across rebases, diffsoup relies on the change-id commit

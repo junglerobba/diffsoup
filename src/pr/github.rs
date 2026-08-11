@@ -4,7 +4,6 @@ use jj_lib::backend::CommitId;
 use reqwest::header::{AUTHORIZATION, HeaderMap, USER_AGENT};
 use serde::Deserialize;
 use serde_json::json;
-use std::{io, process::Stdio};
 use url::Url;
 
 use crate::{
@@ -59,38 +58,6 @@ impl GithubFetcher {
             }),
             _ => Err(CustomError::UrlError.into()),
         }
-    }
-}
-
-pub(crate) fn get_token() -> Result<Option<String>> {
-    let output = std::process::Command::new("gh")
-        .args(["auth", "token"])
-        .stdout(Stdio::piped())
-        .output();
-
-    let output = match output {
-        Ok(o) => o,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => {
-            return Err(e).change_context(CustomError::ProcessError("Error running gh".into()));
-        }
-    };
-
-    if !output.status.success() {
-        return Err(CustomError::ProcessError(format!(
-            "`gh` exited with status {:?}",
-            output.status.code().unwrap_or(-1)
-        ))
-        .into());
-    }
-    let token = String::from_utf8(output.stdout).change_context(CustomError::ProcessError(
-        "invalid gh auth token output".into(),
-    ))?;
-    let trimmed = token.trim();
-    if trimmed.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(trimmed.into()))
     }
 }
 
