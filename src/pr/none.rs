@@ -51,6 +51,10 @@ impl NoFetcher {
 }
 
 impl PrFetcher for NoFetcher {
+    fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
+        Ok(None)
+    }
+
     fn fetch_history(
         &self,
         _pagination: Option<&Pagination>,

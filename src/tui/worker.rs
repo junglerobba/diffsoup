@@ -13,6 +13,7 @@ use diffsoup::{
 use error_stack::ResultExt;
 use jj_lib::{
     backend::CommitId,
+    ref_name::RefName,
     repo::{ReadonlyRepo, Repo},
     workspace::Workspace,
 };
@@ -28,6 +29,7 @@ pub struct WorkerMsg<T> {
 #[derive(Debug, Clone)]
 pub enum WorkerRequest {
     LoadCommits {
+        init: bool,
         pagination: Option<Pagination>,
     },
     CalculateBranchDiff {
@@ -75,9 +77,30 @@ pub fn spawn_worker_thread(
     std::thread::spawn(move || {
         while let Ok(request) = worker_request_rx.recv() {
             let response = match request.msg {
-                WorkerRequest::LoadCommits { pagination } => {
+                WorkerRequest::LoadCommits { init, pagination } => {
+                    let local = if init && let Ok(Some(pr_meta)) = pr_fetcher.get_pull_request() {
+                        (
+                            repo.view()
+                                .get_local_bookmark(RefName::new(&pr_meta.source_branch))
+                                .as_normal(),
+                            repo.view()
+                                .get_local_bookmark(RefName::new(&pr_meta.target_branch))
+                                .as_normal(),
+                        )
+                    } else {
+                        (None, None)
+                    };
+
                     match pr_fetcher.fetch_history(pagination.as_ref()) {
-                        Ok(page) => {
+                        Ok(mut page) => {
+                            if let (Some(source), target) = local
+                                && page.latest().map(|e| &e.head_ref) != Some(source)
+                            {
+                                page.insert(
+                                    HistoryEntry::new(source.clone(), target.cloned())
+                                        .pending(true),
+                                );
+                            }
                             let items = page
                                 .items
                                 .iter()

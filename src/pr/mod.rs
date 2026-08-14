@@ -34,6 +34,22 @@ pub enum PageDirection {
 pub struct HistoryEntry {
     pub head_ref: CommitId,
     pub base_ref: Option<CommitId>,
+    pub unpublished: bool,
+}
+
+impl HistoryEntry {
+    pub fn new(head_ref: CommitId, base_ref: Option<CommitId>) -> Self {
+        Self {
+            head_ref,
+            base_ref,
+            unpublished: false,
+        }
+    }
+
+    pub fn pending(mut self, pending: bool) -> Self {
+        self.unpublished = pending;
+        self
+    }
 }
 
 impl From<CommitId> for HistoryEntry {
@@ -41,6 +57,7 @@ impl From<CommitId> for HistoryEntry {
         Self {
             head_ref: value,
             base_ref: None,
+            unpublished: false,
         }
     }
 }
@@ -50,6 +67,22 @@ pub struct Page<T> {
     pub items: Vec<T>,
     pub direction: PageDirection,
     pub next: Option<Pagination>,
+}
+
+impl<T> Page<T> {
+    pub fn latest(&self) -> Option<&T> {
+        match self.direction {
+            PageDirection::Forward => self.items.first(),
+            PageDirection::Backward => self.items.last(),
+        }
+    }
+
+    pub fn insert(&mut self, item: T) {
+        match self.direction {
+            PageDirection::Forward => self.items.insert(0, item),
+            PageDirection::Backward => self.items.push(item),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -237,7 +270,17 @@ If this is one of the supported forges, then please add this to your git config:
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PullRequest {
+    pub target_branch: String,
+    pub source_branch: String,
+}
+
 pub trait PrFetcher: Debug + Send {
+    fn get_pull_request(&self) -> Result<Option<PullRequest>> {
+        Ok(None)
+    }
+
     fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>>;
 }
 

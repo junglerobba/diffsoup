@@ -1,0 +1,16 @@
+query(
+  $owner: String!,
+  $repo: String!,
+  $pr: Int!,
+) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      headRef {
+        name
+      }
+      baseRef {
+        name
+      }
+    }
+  }
+}

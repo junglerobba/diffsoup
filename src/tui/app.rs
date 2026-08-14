@@ -229,7 +229,11 @@ fn draw(screen: &AppScreen, f: &mut ratatui::Frame) {
                 list_view.base_name,
                 list_view.comparison_index + 1,
                 total,
-                list_view.comparison_name
+                if list_view.unpublished {
+                    format!("{} (unpublished)", list_view.comparison_name)
+                } else {
+                    list_view.comparison_name.clone()
+                }
             )
         }
         AppScreen::DiffView(_) => "diffsoup - Interdiff View".to_string(),

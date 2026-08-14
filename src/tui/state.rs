@@ -38,6 +38,7 @@ pub enum AppScreen {
 #[derive(Debug, Clone)]
 pub struct ListView {
     pub commits: Vec<CommitDiff>,
+    pub unpublished: bool,
     pub list_state: ListState,
     pub show_unchanged: bool,
     pub base_name: String,
@@ -180,8 +181,10 @@ impl AppState {
             WorkerResponse::CalculateBranchDiff { commits, from, to } => {
                 self.base_index = from;
                 self.comparison_index = to;
+                let unpublished = self.commit_list.get(to).is_some_and(|c| c.unpublished);
                 let mut list_view = ListView {
                     list_state: self.list_state,
+                    unpublished,
                     show_unchanged: self.show_unchanged,
                     base_name: self
                         .commit_list
@@ -227,6 +230,7 @@ impl AppState {
                     let _ = self.worker_req_tx.send(WorkerMsg {
                         job_id,
                         msg: WorkerRequest::LoadCommits {
+                            init: false,
                             pagination: Some(next.clone()),
                         },
                     });

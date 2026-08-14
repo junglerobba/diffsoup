@@ -92,7 +92,7 @@ impl BitbucketCloudFetcher {
         for action in actions.rev() {
             let head_ref = self.resolve_commit_id(&action.source.commit.hash)?;
             let base_ref = Some(self.resolve_commit_id(&action.destination.commit.hash)?);
-            commits.push(HistoryEntry { head_ref, base_ref });
+            commits.push(HistoryEntry::new(head_ref, base_ref));
         }
 
         Ok(Page {
@@ -142,11 +142,48 @@ struct Commit {
     hash: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct PullRequest {
+    source: PrEndpoint,
+    destination: PrEndpoint,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct PrEndpoint {
+    branch: Branch,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct Branch {
+    name: String,
+}
+
+const BASE_PATH: &str = "https://api.bitbucket.org/2.0";
+
 impl PrFetcher for BitbucketCloudFetcher {
+    fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
+        let res: PullRequest = self
+            .client
+            .get(format!(
+                "{BASE_PATH}/repositories/{}/{}/pullrequests/{}",
+                self.workspace, self.repo, self.pr_id
+            ))
+            .send_checked()?
+            .json()
+            .change_context(CustomError::RequestError)?;
+        Ok(Some(super::PullRequest {
+            target_branch: res.destination.branch.name,
+            source_branch: res.source.branch.name,
+        }))
+    }
+
     fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>> {
         let next = match pagination {
             None => Some(format!(
-                "https://api.bitbucket.org/2.0/repositories/{}/{}/pullrequests/{}/activity",
+                "{BASE_PATH}/repositories/{}/{}/pullrequests/{}/activity",
                 self.workspace, self.repo, self.pr_id,
             )),
             Some(Pagination::Cursor(pagination)) => pagination.cursor.clone(),

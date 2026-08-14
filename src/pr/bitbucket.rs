@@ -6,7 +6,7 @@ use url::Url;
 
 use crate::{
     error::{CustomError, Result, SendChecked},
-    pr::{HistoryEntry, OffsetPagination, Page, PageDirection, Pagination, PrFetcher},
+    pr::{HistoryEntry, OffsetPagination, Page, PageDirection, Pagination, PrFetcher, PullRequest},
 };
 
 #[derive(Debug)]
@@ -100,19 +100,18 @@ impl TryFrom<PrActivity> for Page<HistoryEntry> {
                     CustomError::CommitError("invalid commit hash from bitbucket".into()),
                 )?;
 
-                commits.push(HistoryEntry {
-                    head_ref: from,
-                    base_ref: Some(to),
-                });
+                commits.push(HistoryEntry::new(from, Some(to)));
             }
-            commits.push(HistoryEntry {
-                head_ref: CommitId::try_from_hex(&action.from_hash).ok_or(
-                    CustomError::CommitError("invalid commit hash from bitbucket".into()),
-                )?,
-                base_ref: Some(CommitId::try_from_hex(&action.to_hash).ok_or(
-                    CustomError::CommitError("invalid commit hash from bitbucket".into()),
-                )?),
-            });
+            commits.push(HistoryEntry::new(
+                CommitId::try_from_hex(&action.from_hash).ok_or(CustomError::CommitError(
+                    "invalid commit hash from bitbucket".into(),
+                ))?,
+                Some(
+                    CommitId::try_from_hex(&action.to_hash).ok_or(CustomError::CommitError(
+                        "invalid commit hash from bitbucket".into(),
+                    ))?,
+                ),
+            ));
         }
 
         Ok(Self {
@@ -144,7 +143,37 @@ struct PrRescopeAction {
     previous_to_hash: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PullRequestResponse {
+    from_ref: Ref,
+    to_ref: Ref,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Ref {
+    display_id: String,
+}
+
 impl PrFetcher for BitbucketFetcher {
+    fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
+        let res: PullRequestResponse = self
+            .client
+            .get(format!(
+                "{}/rest/api/latest/{}/pull-requests/{}",
+                self.host, self.repo_path, self.pr_id
+            ))
+            .send_checked()?
+            .json()
+            .change_context(CustomError::RequestError)?;
+
+        Ok(Some(PullRequest {
+            target_branch: res.to_ref.display_id,
+            source_branch: res.from_ref.display_id,
+        }))
+    }
+
     fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>> {
         let (offset, limit) = match pagination {
             None => (0, None),

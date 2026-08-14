@@ -66,19 +66,32 @@ impl GithubFetcher {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GraphQlResponse {
-    data: Data,
+pub struct GraphQlResponse<T> {
+    data: Data<T>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Data {
-    repository: Repository,
+pub struct Data<T> {
+    repository: Repository<T>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Repository {
-    pull_request: PullRequest,
+pub struct Repository<T> {
+    pull_request: T,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestMeta {
+    head_ref: Ref,
+    base_ref: Ref,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ref {
+    name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,10 +145,10 @@ pub struct PageInfo {
     start_cursor: Option<String>,
 }
 
-impl TryFrom<(&ThreadSafeRepository, GraphQlResponse)> for Page<HistoryEntry> {
+impl TryFrom<(&ThreadSafeRepository, GraphQlResponse<PullRequest>)> for Page<HistoryEntry> {
     type Error = error_stack::Report<CustomError>;
 
-    fn try_from(value: (&ThreadSafeRepository, GraphQlResponse)) -> Result<Self> {
+    fn try_from(value: (&ThreadSafeRepository, GraphQlResponse<PullRequest>)) -> Result<Self> {
         let (repo, response) = value;
         let page_info = response
             .data
@@ -157,19 +170,19 @@ impl TryFrom<(&ThreadSafeRepository, GraphQlResponse)> for Page<HistoryEntry> {
             match &entry.node {
                 TimelineEvent::HeadRefForcePushedEvent(event) => {
                     if !page_info.has_previous_page && i == 0 {
-                        commits.push(HistoryEntry {
-                            head_ref: CommitId::try_from_hex(&event.before_commit.oid).ok_or(
+                        commits.push(HistoryEntry::new(
+                            CommitId::try_from_hex(&event.before_commit.oid).ok_or(
                                 CustomError::CommitError("invalid commit hash from github".into()),
                             )?,
-                            base_ref: base_ref.clone(),
-                        });
+                            base_ref.clone(),
+                        ));
                     }
-                    commits.push(HistoryEntry {
-                        head_ref: CommitId::try_from_hex(&event.after_commit.oid).ok_or(
+                    commits.push(HistoryEntry::new(
+                        CommitId::try_from_hex(&event.after_commit.oid).ok_or(
                             CustomError::CommitError("invalid commit hash from github".into()),
                         )?,
-                        base_ref: base_ref.clone(),
-                    });
+                        base_ref.clone(),
+                    ));
                 }
                 TimelineEvent::BaseRefChangedEvent(event) => {
                     let repo = repo.to_thread_local();
@@ -209,6 +222,29 @@ impl TryFrom<(&ThreadSafeRepository, GraphQlResponse)> for Page<HistoryEntry> {
 }
 
 impl PrFetcher for GithubFetcher {
+    fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
+        let query = include_str!("github_pr_meta_query.graphql");
+        let body = json!({
+            "query" : query,
+            "variables": {
+                "owner": self.owner,
+                "repo": self.repo_name,
+                "pr": self.pr_id,
+            }
+        });
+        let res: GraphQlResponse<PullRequestMeta> = self
+            .client
+            .post(GITHUB_GRAPHQL_URL)
+            .json(&body)
+            .send_checked()?
+            .json()
+            .change_context(CustomError::RequestError)?;
+        Ok(Some(super::PullRequest {
+            target_branch: res.data.repository.pull_request.base_ref.name,
+            source_branch: res.data.repository.pull_request.head_ref.name,
+        }))
+    }
+
     fn fetch_history(&self, pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>> {
         let (cursor, limit) = match pagination {
             None => (None.as_ref(), DEFAULT_PAGE_SIZE),
@@ -231,7 +267,7 @@ impl PrFetcher for GithubFetcher {
                 "limit": limit
             }
         });
-        let res: GraphQlResponse = self
+        let res: GraphQlResponse<PullRequest> = self
             .client
             .post(GITHUB_GRAPHQL_URL)
             .json(&body)

@@ -65,6 +65,12 @@ impl GitlabFetcher {
 }
 
 #[derive(Debug, Deserialize)]
+struct MergeRequest {
+    source_branch: String,
+    target_branch: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct MergeRequestVersion {
     head_commit_sha: String,
     start_commit_sha: String,
@@ -81,14 +87,8 @@ impl TryFrom<Vec<MergeRequestVersion>> for Page<HistoryEntry> {
                     CommitId::try_from_hex(&v.head_commit_sha),
                     CommitId::try_from_hex(&v.start_commit_sha),
                 ) {
-                    (Some(head), Some(start)) => Ok(HistoryEntry {
-                        head_ref: head,
-                        base_ref: Some(start),
-                    }),
-                    (Some(head), _) => Ok(HistoryEntry {
-                        head_ref: head,
-                        base_ref: None,
-                    }),
+                    (Some(head), Some(start)) => Ok(HistoryEntry::new(head, Some(start))),
+                    (Some(head), _) => Ok(HistoryEntry::new(head, None)),
                     (None, _) => Err(CustomError::CommitError(format!(
                         "invalid commit hash {} from gitlab",
                         v.start_commit_sha
@@ -106,6 +106,22 @@ impl TryFrom<Vec<MergeRequestVersion>> for Page<HistoryEntry> {
 }
 
 impl PrFetcher for GitlabFetcher {
+    fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
+        let res: MergeRequest = self
+            .client
+            .get(format!(
+                "{}/api/v4/projects/{}%2F{}/merge_requests/{}",
+                self.host, self.project, self.repository, self.mr_id
+            ))
+            .send_checked()?
+            .json()
+            .change_context(CustomError::RequestError)?;
+        Ok(Some(super::PullRequest {
+            target_branch: res.target_branch,
+            source_branch: res.source_branch,
+        }))
+    }
+
     fn fetch_history(&self, _pagination: Option<&Pagination>) -> Result<Page<HistoryEntry>> {
         let res: Vec<MergeRequestVersion> = self
             .client
