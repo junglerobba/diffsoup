@@ -769,6 +769,7 @@ dependencies = [
  "error-stack",
  "futures 0.3.33",
  "gix",
+ "http",
  "jj-cli",
  "jj-lib",
  "ratatui",

@@ -1,5 +1,5 @@
 use crate::{
-    error::{CustomError, Result},
+    error::{CustomError, Result, SendChecked},
     pr::{HistoryEntry, Page, PageDirection, Pagination, PrFetcher},
 };
 use error_stack::ResultExt;
@@ -104,8 +104,7 @@ impl PrFetcher for GitlabFetcher {
                 "{}/api/v4/projects/{}%2F{}/merge_requests/{}/versions",
                 self.host, self.project, self.repository, self.mr_id
             ))
-            .send()
-            .change_context(CustomError::RequestError)?
+            .send_checked()?
             .json()
             .change_context(CustomError::RequestError)?;
         res.try_into()

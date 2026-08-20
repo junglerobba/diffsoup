@@ -5,7 +5,7 @@ use serde::Deserialize;
 use url::Url;
 
 use crate::{
-    error::{CustomError, Result},
+    error::{CustomError, Result, SendChecked},
     pr::{HistoryEntry, OffsetPagination, Page, PageDirection, Pagination, PrFetcher},
 };
 
@@ -168,8 +168,7 @@ impl PrFetcher for BitbucketFetcher {
                     .map(|limit| format!("&limit={limit}"))
                     .unwrap_or_default()
             ))
-            .send()
-            .change_context(CustomError::RequestError)?
+            .send_checked()?
             .json()
             .change_context(CustomError::RequestError)?;
         res.try_into()

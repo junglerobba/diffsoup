@@ -7,7 +7,7 @@ use serde::Deserialize;
 use url::Url;
 
 use crate::{
-    error::{CustomError, Result},
+    error::{CustomError, Result, SendChecked},
     pr::{CursorPagination, HistoryEntry, Page, PageDirection, Pagination, PrFetcher},
 };
 
@@ -161,8 +161,7 @@ impl PrFetcher for BitbucketCloudFetcher {
         let res: PrActivity = self
             .client
             .get(next)
-            .send()
-            .change_context(CustomError::RequestError)?
+            .send_checked()?
             .json()
             .change_context(CustomError::RequestError)?;
         self.map_history(res)

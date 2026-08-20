@@ -7,7 +7,7 @@ use serde_json::json;
 use url::Url;
 
 use crate::{
-    error::{CustomError, Result},
+    error::{CustomError, Result, SendChecked},
     pr::{HistoryEntry, Page, PageDirection, Pagination, PrFetcher},
 };
 
@@ -235,13 +235,13 @@ impl PrFetcher for GithubFetcher {
                 "limit": limit
             }
         });
-        let res = self
+        let res: GraphQlResponse = self
             .client
             .post(GITHUB_GRAPHQL_URL)
             .json(&body)
-            .send()
+            .send_checked()?
+            .json()
             .change_context(CustomError::RequestError)?;
-        let res: GraphQlResponse = res.json().change_context(CustomError::RequestError)?;
         (&self.repo, res).try_into()
     }
 }
