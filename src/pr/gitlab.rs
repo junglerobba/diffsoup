@@ -23,7 +23,7 @@ impl GitlabFetcher {
         if let Some(token) = &token {
             headers.insert(
                 "PRIVATE-TOKEN",
-                token.parse().change_context(CustomError::UrlError)?,
+                token.parse().change_context(CustomError::RequestError)?,
             );
         }
         let client = reqwest::blocking::Client::builder()
@@ -34,7 +34,10 @@ impl GitlabFetcher {
             ))?;
         let host = url.origin().unicode_serialization();
 
-        let segments: Vec<&str> = url.path_segments().ok_or(CustomError::UrlError)?.collect();
+        let segments: Vec<&str> = url
+            .path_segments()
+            .ok_or_else(|| CustomError::UrlError(format!("Invalid URL format {url}")))?
+            .collect();
 
         match segments.as_slice() {
             [project, repository, _, "merge_requests", mr_id] => Ok(Self {
@@ -44,7 +47,10 @@ impl GitlabFetcher {
                 repository: repository.to_string(),
                 mr_id: mr_id.to_string(),
             }),
-            _ => Err(CustomError::UrlError.into()),
+            _ => Err(CustomError::UrlError(format!(
+                "Invalid URL format {url} for platform gitlab"
+            ))
+            .into()),
         }
     }
 }

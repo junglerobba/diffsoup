@@ -25,7 +25,7 @@ impl BitbucketFetcher {
                 AUTHORIZATION,
                 format!("Bearer {}", token)
                     .parse()
-                    .change_context(CustomError::UrlError)?,
+                    .change_context(CustomError::RequestError)?,
             );
         }
         let client = reqwest::blocking::Client::builder()
@@ -35,7 +35,10 @@ impl BitbucketFetcher {
                 "error building client".to_string(),
             ))?;
         let host = url.origin().unicode_serialization();
-        let segments: Vec<&str> = url.path_segments().ok_or(CustomError::UrlError)?.collect();
+        let segments: Vec<&str> = url
+            .path_segments()
+            .ok_or_else(|| CustomError::UrlError(format!("Invalid URL format {url}")))?
+            .collect();
 
         match segments.as_slice() {
             [
@@ -58,7 +61,10 @@ impl BitbucketFetcher {
                 repo_path: format!("users/{user}/repos/{repo}"),
                 pr_id: pr_id.to_string(),
             }),
-            _ => Err(CustomError::UrlError.into()),
+            _ => Err(CustomError::UrlError(format!(
+                "Invalid URL format on {url} for platform bitbucket"
+            ))
+            .into()),
         }
     }
 }

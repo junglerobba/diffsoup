@@ -7,7 +7,7 @@ pub type Result<T> = core::result::Result<T, Report<CustomError>>;
 #[derive(Debug)]
 pub enum CustomError {
     RepoError,
-    UrlError,
+    UrlError(String),
     RequestError,
     ExprError,
     ConfigError,
@@ -21,7 +21,7 @@ impl Display for CustomError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::RepoError => write!(f, "Repo Error"),
-            Self::UrlError => write!(f, "URL Error"),
+            Self::UrlError(msg) => write!(f, "URL Error: {msg}"),
             Self::RequestError => write!(f, "Request Error"),
             Self::ExprError => write!(f, "Expr Error"),
             Self::ConfigError => write!(f, "Config Error"),

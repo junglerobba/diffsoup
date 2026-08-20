@@ -253,7 +253,9 @@ pub fn get_pr_fetcher(
             Ok(Some(Box::new(NoFetcher::new(&from, &to, repo, workspace)?)))
         }
         (Some(url), _, _) => {
-            let parsed = url::Url::parse(&url).change_context(CustomError::UrlError)?;
+            let parsed = url::Url::parse(&url).change_context_lazy(|| {
+                CustomError::UrlError(format!("Could not parse URL from {url}"))
+            })?;
             let Some(git_backend) = repo.store().backend_impl::<GitBackend>() else {
                 return Err(
                     CustomError::CommitError("not backed by a git repo".to_string()).into(),

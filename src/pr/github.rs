@@ -30,14 +30,14 @@ impl GithubFetcher {
             USER_AGENT,
             "graphql-client"
                 .parse()
-                .change_context(CustomError::UrlError)?,
+                .change_context(CustomError::RequestError)?,
         );
         if let Some(token) = &token {
             headers.insert(
                 AUTHORIZATION,
                 format!("Bearer {}", token)
                     .parse()
-                    .change_context(CustomError::UrlError)?,
+                    .change_context(CustomError::RequestError)?,
             );
         }
         let client = reqwest::blocking::Client::builder()
@@ -46,17 +46,25 @@ impl GithubFetcher {
             .change_context(CustomError::ProcessError(
                 "error building client".to_string(),
             ))?;
-        let segments: Vec<&str> = url.path_segments().ok_or(CustomError::UrlError)?.collect();
+        let segments: Vec<&str> = url
+            .path_segments()
+            .ok_or_else(|| CustomError::UrlError(format!("Invalid URL format: {url}")))?
+            .collect();
 
         match segments.as_slice() {
             [owner, repo_name, "pull", pr_id, ..] => Ok(Self {
                 client,
                 owner: owner.to_string(),
                 repo_name: repo_name.to_string(),
-                pr_id: pr_id.parse().change_context(CustomError::UrlError)?,
+                pr_id: pr_id.parse().change_context_lazy(|| {
+                    CustomError::UrlError(format!("Could not parse pull request id from {pr_id}"))
+                })?,
                 repo: repo.into_sync(),
             }),
-            _ => Err(CustomError::UrlError.into()),
+            _ => Err(CustomError::UrlError(format!(
+                "Url {url} does not match expected format for github"
+            ))
+            .into()),
         }
     }
 }

@@ -28,7 +28,7 @@ impl BitbucketCloudFetcher {
                 AUTHORIZATION,
                 format!("Basic {}", token)
                     .parse()
-                    .change_context(CustomError::UrlError)?,
+                    .change_context(CustomError::RequestError)?,
             );
         }
         let client = reqwest::blocking::Client::builder()
@@ -37,7 +37,10 @@ impl BitbucketCloudFetcher {
             .change_context(CustomError::ProcessError(
                 "error building client".to_string(),
             ))?;
-        let segments: Vec<&str> = url.path_segments().ok_or(CustomError::UrlError)?.collect();
+        let segments: Vec<&str> = url
+            .path_segments()
+            .ok_or_else(|| CustomError::UrlError(format!("Invalid URL format {url}")))?
+            .collect();
 
         match segments.as_slice() {
             [workspace, repo, "pull-requests", pr_id, ..] => Ok(Self {
@@ -47,7 +50,10 @@ impl BitbucketCloudFetcher {
                 pr_id: pr_id.to_string(),
                 resolved_commits: RefCell::new(HashMap::new()),
             }),
-            _ => Err(CustomError::UrlError.into()),
+            _ => Err(CustomError::UrlError(format!(
+                "Url {url} does not math expected format for bitbucket cloud"
+            ))
+            .into()),
         }
     }
 
