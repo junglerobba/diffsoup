@@ -3,6 +3,7 @@ use crate::{
     pr::{HistoryEntry, Page, PageDirection, Pagination, PrFetcher},
 };
 use error_stack::ResultExt;
+use http::{HeaderValue, header::USER_AGENT};
 use jj_lib::backend::CommitId;
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
@@ -20,6 +21,14 @@ pub struct GitlabFetcher {
 impl GitlabFetcher {
     pub fn new(url: &Url, token: Option<String>) -> Result<Self> {
         let mut headers = HeaderMap::new();
+        headers.insert(
+            USER_AGENT,
+            HeaderValue::from_static(concat!(
+                env!("CARGO_PKG_NAME"),
+                "/",
+                env!("CARGO_PKG_VERSION")
+            )),
+        );
         if let Some(token) = &token {
             headers.insert(
                 "PRIVATE-TOKEN",

@@ -1,5 +1,6 @@
 use error_stack::ResultExt;
 use gix::ThreadSafeRepository;
+use http::HeaderValue;
 use jj_lib::backend::CommitId;
 use reqwest::header::{AUTHORIZATION, HeaderMap, USER_AGENT};
 use serde::Deserialize;
@@ -26,12 +27,7 @@ pub struct GithubFetcher {
 impl GithubFetcher {
     pub fn new(url: &Url, token: Option<String>, repo: gix::Repository) -> Result<Self> {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            USER_AGENT,
-            "graphql-client"
-                .parse()
-                .change_context(CustomError::RequestError)?,
-        );
+        headers.insert(USER_AGENT, HeaderValue::from_static("graphql-client"));
         if let Some(token) = &token {
             headers.insert(
                 AUTHORIZATION,
