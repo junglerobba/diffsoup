@@ -10,10 +10,10 @@ clap = { version = "4.5.53", features = ["derive"] }
 crossterm = "0.28.1"
 error-stack = "0.6.0"
 futures = "0.3.31"
-gix = { version = "0.85.0", features = ["blocking-network-client"] }
+gix = { version = "0.87.1", features = ["blocking-network-client"] }
 http = "1.5.0"
-jj-cli = "0.44.0"
-jj-lib = "0.44.0"
+jj-cli = "0.45.1"
+jj-lib = "0.45.1"
 ratatui = "0.30.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"

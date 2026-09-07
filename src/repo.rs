@@ -179,7 +179,7 @@ where
                 Err(_) => return Some(StoreSearchResult::Fetch(sha)),
             };
 
-            let jj_has_commit = repo.index().has_id(sha).is_ok_and(|value| value);
+            let jj_has_commit = block_on(repo.index().has_id(sha)).is_ok_and(|value| value);
             if !jj_has_commit {
                 return Some(StoreSearchResult::Import(commit));
             }

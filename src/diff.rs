@@ -20,13 +20,13 @@ use jj_lib::{
     git_backend::GitBackend,
     object_id::ObjectId,
     repo::Repo,
-    repo_path::RepoPathUiConverter,
     revset::{
         self, ResolvedRevsetExpression, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression,
         RevsetExtensions, RevsetParseContext, RevsetStreamExt, RevsetWorkspaceContext,
         SymbolResolver, SymbolResolverExtension,
     },
     rewrite::rebase_to_dest_parent,
+    ui_path::RepoPathUiConverter,
     workspace::Workspace,
 };
 use std::{
