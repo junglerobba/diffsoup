@@ -2,7 +2,7 @@ use crate::error::{CustomError, Result};
 use error_stack::ResultExt;
 use futures::executor::block_on;
 use jj_cli::{
-    cli_util::{find_workspace_dir, start_repo_transaction},
+    cli_util::find_workspace_dir,
     config::{ConfigEnv, config_from_environment, default_config_layers},
     ui::Ui,
 };
@@ -16,6 +16,7 @@ use jj_lib::{
     local_working_copy::{LocalWorkingCopy, LocalWorkingCopyFactory},
     repo::{ReadonlyRepo, Repo},
     settings::UserSettings,
+    transaction::Transaction,
     workspace::{
         DefaultWorkspaceLoaderFactory, WorkingCopyFactories, Workspace, WorkspaceLoaderFactory,
     },
@@ -123,7 +124,7 @@ fn init_jj_repo(git_repo_path: &Path) -> Result<RepoHandle> {
     .change_context(CustomError::RepoError)
     .attach("could not initialize jj repo")?;
 
-    let mut tx = start_repo_transaction(&repo, workspace.workspace_name(), &[]);
+    let mut tx = start_transaction(&repo);
     block_on(git::import_refs(
         tx.repo_mut(),
         &GitImportOptions {
@@ -240,7 +241,7 @@ pub fn fetch_commits(
             .change_context(CustomError::RepoError)?;
     }
 
-    let mut tx = repo.start_transaction();
+    let mut tx = start_transaction(&repo);
 
     let store = tx.repo_mut().store();
     let commits: Vec<Commit> = commits
@@ -259,6 +260,15 @@ pub fn fetch_commits(
         block_on(tx.commit("import fetched commits")).change_context(CustomError::RepoError)?;
 
     Ok(updated_repo)
+}
+
+fn start_transaction(repo: &Arc<ReadonlyRepo>) -> Transaction {
+    let mut tx = repo.start_transaction();
+    tx.set_attribute(
+        String::from("app"),
+        format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
+    );
+    tx
 }
 
 #[cfg(test)]
@@ -399,6 +409,16 @@ mod tests {
         let reopened = super::open(dir.path()).unwrap();
 
         for repo in [updated, reopened.repo] {
+            let op = repo.operation().metadata();
+            assert_eq!(
+                op.description, "import fetched commits",
+                "op log description should match"
+            );
+            assert_eq!(
+                op.attributes["app"],
+                format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
+                "op log app attribute should be app name and version"
+            );
             for commit in &commits {
                 assert!(
                     block_on(repo.index().has_id(commit))?,
