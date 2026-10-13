@@ -51,6 +51,10 @@ impl NoFetcher {
 }
 
 impl PrFetcher for NoFetcher {
+    fn pr_url(&self) -> Option<String> {
+        None
+    }
+
     fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
         Ok(None)
     }

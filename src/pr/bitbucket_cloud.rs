@@ -14,6 +14,7 @@ use crate::{
 #[derive(Debug)]
 pub struct BitbucketCloudFetcher {
     client: reqwest::blocking::Client,
+    pr_url: String,
     workspace: String,
     repo: String,
     pr_id: String,
@@ -45,6 +46,7 @@ impl BitbucketCloudFetcher {
         match segments.as_slice() {
             [workspace, repo, "pull-requests", pr_id, ..] => Ok(Self {
                 client,
+                pr_url: url.to_string(),
                 workspace: workspace.to_string(),
                 repo: repo.to_string(),
                 pr_id: pr_id.to_string(),
@@ -164,6 +166,10 @@ struct Branch {
 const BASE_PATH: &str = "https://api.bitbucket.org/2.0";
 
 impl PrFetcher for BitbucketCloudFetcher {
+    fn pr_url(&self) -> Option<String> {
+        Some(self.pr_url.clone())
+    }
+
     fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
         let res: PullRequest = self
             .client

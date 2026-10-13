@@ -194,6 +194,7 @@ where
 pub fn fetch_commits(
     commits: &[StoreSearchResult],
     repo: Arc<ReadonlyRepo>,
+    pr_url: Option<String>,
 ) -> Result<Arc<ReadonlyRepo>> {
     let to_fetch: Vec<&CommitId> = commits
         .iter()
@@ -242,6 +243,9 @@ pub fn fetch_commits(
     }
 
     let mut tx = start_transaction(&repo);
+    if let Some(pr_url) = pr_url {
+        tx.set_attribute("pull-request".to_string(), pr_url);
+    }
 
     let store = tx.repo_mut().store();
     let commits: Vec<Commit> = commits
@@ -395,12 +399,14 @@ mod tests {
 
         let handle = super::open(dir.path()).unwrap();
 
+        const PR_URL: &str = "https://example.org/pulls/2";
         let result = super::fetch_commits(
             &commits
                 .iter()
                 .map(super::StoreSearchResult::Fetch)
                 .collect::<Vec<_>>(),
             handle.repo.clone(),
+            Some(PR_URL.into()),
         );
         assert!(result.is_ok(), "fetching commits should not error");
 
@@ -418,6 +424,10 @@ mod tests {
                 op.attributes["app"],
                 format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
                 "op log app attribute should be app name and version"
+            );
+            assert_eq!(
+                op.attributes["pull-request"], PR_URL,
+                "op log should contain pull-request url"
             );
             for commit in &commits {
                 assert!(

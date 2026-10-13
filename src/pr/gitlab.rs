@@ -12,6 +12,7 @@ use url::Url;
 #[derive(Debug)]
 pub struct GitlabFetcher {
     client: reqwest::blocking::Client,
+    pr_url: String,
     host: String,
     project: String,
     repository: String,
@@ -51,6 +52,7 @@ impl GitlabFetcher {
         match segments.as_slice() {
             [project, repository, _, "merge_requests", mr_id] => Ok(Self {
                 client,
+                pr_url: url.to_string(),
                 host: host.to_string(),
                 project: project.to_string(),
                 repository: repository.to_string(),
@@ -106,6 +108,10 @@ impl TryFrom<Vec<MergeRequestVersion>> for Page<HistoryEntry> {
 }
 
 impl PrFetcher for GitlabFetcher {
+    fn pr_url(&self) -> Option<String> {
+        Some(self.pr_url.clone())
+    }
+
     fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
         let res: MergeRequest = self
             .client

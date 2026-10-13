@@ -18,6 +18,7 @@ const DEFAULT_PAGE_SIZE: usize = 25;
 #[derive(Debug)]
 pub struct GithubFetcher {
     client: reqwest::blocking::Client,
+    pr_url: String,
     owner: String,
     repo_name: String,
     pr_id: usize,
@@ -50,6 +51,7 @@ impl GithubFetcher {
         match segments.as_slice() {
             [owner, repo_name, "pull", pr_id, ..] => Ok(Self {
                 client,
+                pr_url: url.to_string(),
                 owner: owner.to_string(),
                 repo_name: repo_name.to_string(),
                 pr_id: pr_id.parse().change_context_lazy(|| {
@@ -222,6 +224,10 @@ impl TryFrom<(&ThreadSafeRepository, GraphQlResponse<PullRequest>)> for Page<His
 }
 
 impl PrFetcher for GithubFetcher {
+    fn pr_url(&self) -> Option<String> {
+        Some(self.pr_url.clone())
+    }
+
     fn get_pull_request(&self) -> Result<Option<super::PullRequest>> {
         let query = include_str!("github_pr_meta_query.graphql");
         let body = json!({

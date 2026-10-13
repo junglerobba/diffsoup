@@ -277,6 +277,8 @@ pub struct PullRequest {
 }
 
 pub trait PrFetcher: Debug + Send {
+    fn pr_url(&self) -> Option<String>;
+
     fn get_pull_request(&self) -> Result<Option<PullRequest>> {
         Ok(None)
     }
