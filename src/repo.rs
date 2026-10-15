@@ -269,6 +269,9 @@ pub fn fetch_commits(
 mod tests {
     use std::io::Write;
 
+    use futures::executor::block_on;
+    use jj_lib::repo::Repo;
+
     fn init_git_repo() -> anyhow::Result<temp_dir::TempDir> {
         let dir = temp_dir::TempDir::new()?;
         std::process::Command::new("git")
@@ -332,6 +335,86 @@ mod tests {
             dir.path().join(".jj").metadata()?.modified()?,
             ".jj should not have been modified"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn fetch_commits() -> anyhow::Result<()> {
+        let remote = temp_dir::TempDir::new()?;
+        std::process::Command::new("git")
+            .args(["-C", remote.path().to_str().unwrap(), "init"])
+            .status()?;
+        std::process::Command::new("git")
+            .current_dir(remote.path())
+            .args(["config", "user.name", "me"])
+            .status()?;
+        std::process::Command::new("git")
+            .current_dir(remote.path())
+            .args(["config", "user.email", "me@example.org"])
+            .status()?;
+
+        let commits = (0..2)
+            .into_iter()
+            .map(|index| {
+                std::process::Command::new("git")
+                    .current_dir(remote.path())
+                    .args(["commit", "--allow-empty", "-m", &format!("{index}")])
+                    .status()
+                    .unwrap();
+                let stdout = std::process::Command::new("git")
+                    .current_dir(remote.path())
+                    .args(["rev-parse", "HEAD"])
+                    .output()
+                    .unwrap()
+                    .stdout;
+
+                let sha = String::from_utf8(stdout).unwrap().trim().to_owned();
+                jj_lib::backend::CommitId::try_from_hex(sha).unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        let dir = temp_dir::TempDir::new()?;
+        std::process::Command::new("git")
+            .args(["-C", dir.path().to_str().unwrap(), "init"])
+            .status()?;
+        std::process::Command::new("jj")
+            .current_dir(dir.path())
+            .args(["git", "init", "--colocate"])
+            .status()?;
+
+        std::process::Command::new("git")
+            .current_dir(dir.path())
+            .args(["remote", "add", "origin", remote.path().to_str().unwrap()])
+            .status()?;
+
+        let handle = super::open(dir.path()).unwrap();
+
+        let result = super::fetch_commits(
+            &commits
+                .iter()
+                .map(super::StoreSearchResult::Fetch)
+                .collect::<Vec<_>>(),
+            handle.repo.clone(),
+        );
+        assert!(result.is_ok(), "fetching commits should not error");
+
+        let updated = result.unwrap();
+        // check both returned handle and newly opened repo
+        let reopened = super::open(dir.path()).unwrap();
+
+        for repo in [updated, reopened.repo] {
+            for commit in &commits {
+                assert!(
+                    block_on(repo.index().has_id(commit))?,
+                    "commit {commit} should have been fetched"
+                );
+                assert!(
+                    !repo.view().heads().contains(commit),
+                    "commit {commit} should not be in visible heads"
+                );
+            }
+        }
+
         Ok(())
     }
 }
