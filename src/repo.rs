@@ -253,11 +253,7 @@ pub fn fetch_commits(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    block_on(tx.repo_mut().add_heads(&commits)).change_context(CustomError::RepoError)?;
-
-    for commit in &commits {
-        tx.repo_mut().remove_head(commit.id());
-    }
+    block_on(tx.repo_mut().index_commits(&commits)).change_context(CustomError::RepoError)?;
 
     let updated_repo =
         block_on(tx.commit("import fetched commits")).change_context(CustomError::RepoError)?;
