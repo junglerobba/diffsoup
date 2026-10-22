@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.xz";
     flakelight.url = "github:nix-community/flakelight";
     flakelight.inputs.nixpkgs.follows = "nixpkgs";
   };
@@ -14,7 +14,6 @@
     flakelight ./. (
       { lib, outputs, ... }:
       {
-        flakelight.builtinFormatters = false;
         systems = lib.systems.flakeExposed;
         package =
           pkgs:
