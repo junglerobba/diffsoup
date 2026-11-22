@@ -91,7 +91,20 @@ pub fn spawn_worker_thread(
                         (None, None)
                     };
 
-                    match pr_fetcher.fetch_history(pagination.as_ref()) {
+                    let history = (|| -> Result<Page<HistoryEntry>> {
+                        let mut page = pr_fetcher.fetch_history(pagination.as_ref())?;
+
+                        while page.items.is_empty() {
+                            let Some(next) = page.next.take() else {
+                                break;
+                            };
+
+                            page = pr_fetcher.fetch_history(Some(&next))?;
+                        }
+                        Ok(page)
+                    })();
+
+                    match history {
                         Ok(mut page) => {
                             if let (Some(source), target) = local
                                 && page.latest().map(|e| &e.head_ref) != Some(source)

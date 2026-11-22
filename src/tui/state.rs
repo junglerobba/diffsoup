@@ -150,9 +150,30 @@ impl AppState {
                         self.commit_list.extend(page.items);
                     }
                 };
+                self.next_page = page.next;
                 match &mut self.screen {
                     AppScreen::Loading(_) => {
                         let job_id = self.next_job();
+                        if self.commit_list.len() < 2 {
+                            if let Some(ref next) = self.next_page {
+                                self.screen =
+                                    AppScreen::Loading(Some("Fetching more pages...".into()));
+                                let _ = self.worker_req_tx.send(WorkerMsg {
+                                    job_id,
+                                    msg: WorkerRequest::LoadCommits {
+                                        pagination: Some(next.clone()),
+                                        init: false,
+                                    },
+                                });
+                                self.current_job = Some(job_id);
+                                return;
+                            } else {
+                                self.screen = AppScreen::Error(Some(
+                                    "not enough commits to calculate a diff".into(),
+                                ));
+                                return;
+                            }
+                        }
                         let (from, to) = match page.direction {
                             PageDirection::Backward => {
                                 (self.commit_list.len() - 2, self.commit_list.len() - 1)
@@ -182,7 +203,6 @@ impl AppState {
                     }
                     _ => {}
                 }
-                self.next_page = page.next;
             }
             WorkerResponse::CalculateBranchDiff { commits, from, to } => {
                 self.base_index = from;
