@@ -1,5 +1,6 @@
 mod bitbucket;
 mod bitbucket_cloud;
+mod forgejo;
 mod github;
 mod gitlab;
 mod none;
@@ -18,8 +19,8 @@ use url::Url;
 use crate::{
     error::{CustomError, Result},
     pr::{
-        bitbucket::BitbucketFetcher, bitbucket_cloud::BitbucketCloudFetcher, github::GithubFetcher,
-        gitlab::GitlabFetcher, none::NoFetcher,
+        bitbucket::BitbucketFetcher, bitbucket_cloud::BitbucketCloudFetcher,
+        forgejo::ForgejoFetcher, github::GithubFetcher, gitlab::GitlabFetcher, none::NoFetcher,
     },
 };
 
@@ -120,6 +121,7 @@ enum Forge {
     Gitlab,
     Bitbucket,
     BitbucketDatacenter,
+    Forgejo,
 }
 
 impl Forge {
@@ -129,6 +131,7 @@ impl Forge {
             "gitlab" => Some(Self::Gitlab),
             "bitbucket" => Some(Self::Bitbucket),
             "bitbucket-datacenter" => Some(Self::BitbucketDatacenter),
+            "forgejo" => Some(Self::Forgejo),
             _ => None,
         }
     }
@@ -138,6 +141,7 @@ impl Forge {
             Some("github.com") => Some(Self::Github),
             Some("gitlab.com") => Some(Self::Gitlab),
             Some("bitbucket.org") => Some(Self::Bitbucket),
+            Some("codeberg.org") => Some(Self::Forgejo),
             _ => None,
         }
     }
@@ -147,13 +151,14 @@ impl Forge {
             Self::Github => Some("GITHUB_TOKEN"),
             Self::Gitlab => Some("GITLAB_TOKEN"),
             Self::BitbucketDatacenter | Self::Bitbucket => Some("BITBUCKET_TOKEN"),
+            Self::Forgejo => None,
         }
     }
 
     fn cmd(self) -> Option<(&'static str, String)> {
         match self {
             Self::Github => Some(("gh", "auth token".to_string())),
-            Self::Gitlab | Self::Bitbucket | Self::BitbucketDatacenter => None,
+            Self::Gitlab | Self::Bitbucket | Self::BitbucketDatacenter | Self::Forgejo => None,
         }
     }
 }
@@ -320,6 +325,7 @@ pub fn get_pr_fetcher(
                 Forge::BitbucketDatacenter => {
                     Ok(Some(Box::new(BitbucketFetcher::new(&parsed, token)?)))
                 }
+                Forge::Forgejo => Ok(Some(Box::new(ForgejoFetcher::new(&parsed, token)?))),
             }
         }
         (_, _, _) => Ok(None),

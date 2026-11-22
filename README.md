@@ -32,7 +32,7 @@ with the same priority as usual.
 ```gitconfig
 # subsection name must match pull request URL
 [diffsoup "https://git.example.org"]
-    # one of github, gitlab, bitbucket, bitbucket-datacenter
+    # one of github, gitlab, bitbucket, bitbucket-datacenter, forgejo
     forge = gitlab
     # optional, env used as fallback
     tokenCommand = pass Token/git.example.org
