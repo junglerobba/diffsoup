@@ -142,11 +142,11 @@ impl Forge {
         }
     }
 
-    fn env(self) -> &'static str {
+    fn env(self) -> Option<&'static str> {
         match self {
-            Self::Github => "GITHUB_TOKEN",
-            Self::Gitlab => "GITLAB_TOKEN",
-            Self::BitbucketDatacenter | Self::Bitbucket => "BITBUCKET_TOKEN",
+            Self::Github => Some("GITHUB_TOKEN"),
+            Self::Gitlab => Some("GITLAB_TOKEN"),
+            Self::BitbucketDatacenter | Self::Bitbucket => Some("BITBUCKET_TOKEN"),
         }
     }
 
@@ -240,7 +240,10 @@ If this is one of the supported forges, then please add this to your git config:
 
         let mut token_source = Vec::new();
 
-        token_source.push(TokenSource::Env(forge.env()));
+        if let Some(env) = forge.env() {
+            token_source.push(TokenSource::Env(env));
+        }
+
         if let Some(config_value) = config
             .string_by("diffsoup", origin.as_bstr_opt(), "tokenCommand")
             .map(|value| value.to_string())
