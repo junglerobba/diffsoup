@@ -142,8 +142,14 @@ impl AppState {
             WorkerResponse::Loading(msg) => self.screen = AppScreen::Loading(Some(msg)),
             WorkerResponse::LoadCommits { page } => {
                 let length = page.items.len();
-                // insert new at start
-                self.commit_list.splice(0..0, page.items);
+                match page.direction {
+                    PageDirection::Backward => {
+                        self.commit_list.splice(0..0, page.items);
+                    }
+                    PageDirection::Forward => {
+                        self.commit_list.extend(page.items);
+                    }
+                };
                 match &mut self.screen {
                     AppScreen::Loading(_) => {
                         let job_id = self.next_job();
