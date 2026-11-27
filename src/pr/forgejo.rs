@@ -54,6 +54,12 @@ enum IssueTimelineAction {
 #[derive(Debug, Deserialize)]
 struct PullPushEvent {
     commit_ids: Vec<String>,
+    force_push: Option<ForcePush>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ForcePush {
+    new_mb: String,
 }
 
 fn from_json_string<'de, D, T>(deserializer: D) -> core::result::Result<T, D::Error>
@@ -187,14 +193,26 @@ impl PrFetcher for ForgejoFetcher {
         let commits = res
             .into_iter()
             .filter_map(|i| match i.action {
-                IssueTimelineAction::PullPush { body } => body.commit_ids.into_iter().last(),
+                IssueTimelineAction::PullPush { body } => body
+                    .commit_ids
+                    .into_iter()
+                    .last()
+                    .map(|id| (body.force_push, id)),
                 IssueTimelineAction::Unknown => None,
             })
-            .map(|commit_id| {
+            .map(|(force_push, commit_id)| {
                 let commit_id = CommitId::try_from_hex(&commit_id).ok_or_else(|| {
                     CustomError::CommitError(format!("invalid commit hash {commit_id}"))
                 })?;
-                Ok(HistoryEntry::new(commit_id, Some(base.clone())))
+                let base_ref = force_push
+                    .map(|f| {
+                        CommitId::try_from_hex(&f.new_mb).ok_or_else(|| {
+                            CustomError::CommitError(format!("invalid commit hash {}", f.new_mb))
+                        })
+                    })
+                    .transpose()?
+                    .unwrap_or_else(|| base.clone());
+                Ok(HistoryEntry::new(commit_id, Some(base_ref)))
             })
             .collect::<Result<Vec<_>>>()?;
 
